@@ -60,10 +60,13 @@ export const Header: React.FC<HeaderProps> = ({
                 className="text-[15px] font-bold tracking-tight leading-tight"
                 style={{ color: 'var(--ink)' }}
               >
-                K-SURF
+                파도
+                <span className="ml-1.5 text-[11px] font-medium" style={{ color: 'var(--ink-3)' }}>
+                  padoh
+                </span>
               </div>
               <p className="text-[11px] truncate leading-tight" style={{ color: 'var(--ink-3)' }}>
-                대한민국 서핑 지도 &amp; 파도 예보
+                한국 서핑 16일 파도 예보
               </p>
             </div>
           </div>

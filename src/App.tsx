@@ -233,11 +233,11 @@ export const App: React.FC = () => {
           <div className="inline-flex items-center gap-2">
             <Waves className="w-4 h-4" style={{ color: 'var(--brand)' }} />
             <span className="font-semibold" style={{ color: 'var(--ink-2)' }}>
-              K-Surf
+              파도 (padoh)
             </span>
             <span>· 예보 Open-Meteo · 지도 OpenStreetMap &amp; CARTO</span>
           </div>
-          <p>© 2026 K-Surf Forecast</p>
+          <p>© 2026 padoh · Weekly Wave Finder</p>
         </div>
       </footer>
     </div>
