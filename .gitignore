@@ -1,0 +1,26 @@
+# 의존성 · 빌드 산출물
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# 벤치마킹용으로 받아둔 Surfline 앱/에셋 (약 507MB).
+# 서드파티 저작물이고 용량도 커서 저장소에 포함하지 않습니다.
+sufline.xapk
+surfline_files/
+
+# 로컬 환경
+.env
+.env.*
+!.env.example
+.dev.vars
+
+# Cloudflare
+.wrangler/
+
+# OS · 에디터
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

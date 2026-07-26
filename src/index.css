@@ -1,0 +1,365 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================================
+   K-SURF 테마 시스템
+   ----------------------------------------------------------------------------
+   테마는 <html data-theme="..."> 로 전환합니다 (src/utils/theme.ts).
+   컴포넌트는 절대 리터럴 hex 를 쓰지 않고 아래 토큰만 참조합니다.
+
+   3종 모두 dataviz validator 로 검증했습니다. 각 테마의 surface / raised /
+   raised-hi 3개 표면 전부에서 본문 잉크·액센트가 WCAG AA(4.5:1), 마크 전용
+   토큰(--ink-mark)이 3:1 을 넘습니다. 스코어 램프는 ordinal 검사 통과
+   (명도 단조 / 인접 ΔL ≥ 0.06 / 밝은 끝 ≥ 2:1 / 단일 색상).
+
+   토큰을 바꾸면 반드시 재검증하세요:
+     node scripts/validate_palette.js "<score-1..5>" --ordinal --mode <light|dark> \
+          --surface "<surface>"
+   ========================================================================= */
+
+/* ── 1. Sea Glass — 기본. 아침 바다 유리알 같은 밝고 시원한 톤 ────────── */
+:root,
+:root[data-theme='sea-glass'] {
+  color-scheme: light;
+
+  --bg:         #EDF4F8;
+  --surface:    #FFFFFF;
+  --raised:     #F4F9FC;
+  --raised-hi:  #E7F1F7;
+  --line:       #D3E3EC;
+  --line-soft:  #E4EEF4;
+
+  --ink:        #0B2733;
+  --ink-2:      #3A5A6B;
+  --ink-3:      #4F6E7C;
+  --ink-mark:   #6E8B9B;
+
+  --gold:       #9A5B00;   /* 스웰 에너지 */
+  --gold-hi:    #C77A0D;
+  --gold-soft:  #FBEFDC;
+  --tide:       #096E92;   /* 물 / 조위 */
+  --tide-soft:  #DCEEF6;
+  --rose:       #B84226;   /* 바람 */
+  --rose-soft:  #FAE5DE;
+
+  --good:       #0E7A5F;   /* 텍스트용 (AA 4.5:1) */
+  --good-soft:  #DAF0E8;
+  --good-fill:  #0E9E78;   /* 마크·막대용 (3:1). 텍스트에 쓰지 말 것 */
+  --fair:       #9A5B00;
+  --fair-soft:  #FBEFDC;
+  --fair-fill:  #BE7700;
+  --poor:       #BC3048;
+  --poor-soft:  #FBE2E6;
+  --poor-fill:  #E03E56;
+
+  --score-1: #8AB6C8;
+  --score-2: #66A2BB;
+  --score-3: #3F83A3;
+  --score-4: #1D688B;
+  --score-5: #08506F;
+
+  --brand:      #096E92;
+  --brand-ink:  #FFFFFF;
+
+  --shadow-panel: 0 1px 2px rgba(11, 39, 51, 0.04), 0 8px 24px -12px rgba(11, 39, 51, 0.18);
+  --shadow-card:  0 1px 2px rgba(11, 39, 51, 0.05);
+  --shadow-lift:  0 2px 4px rgba(11, 39, 51, 0.06), 0 12px 28px -10px rgba(11, 39, 51, 0.22);
+  --map-tiles: light;
+}
+
+/* ── 2. Golden Hour — 해질녘 세션. 따뜻한 모래빛 ─────────────────────── */
+:root[data-theme='golden-hour'] {
+  color-scheme: light;
+
+  --bg:         #F7EEE0;
+  --surface:    #FFFCF6;
+  --raised:     #FBF4E9;
+  --raised-hi:  #F4E8D6;
+  --line:       #E7D6BE;
+  --line-soft:  #F0E4D2;
+
+  --ink:        #2B1D14;
+  --ink-2:      #5C4433;
+  --ink-3:      #7E6049;
+  --ink-mark:   #9D8069;
+
+  --gold:       #96530B;
+  --gold-hi:    #C0731A;
+  --gold-soft:  #F7E7CD;
+  --tide:       #0D6B61;
+  --tide-soft:  #DCEFEB;
+  --rose:       #A83545;
+  --rose-soft:  #F8E3E6;
+
+  --good:       #0D6B61;
+  --good-soft:  #DCEFEB;
+  --good-fill:  #0F8C7D;
+  --fair:       #96530B;
+  --fair-soft:  #F7E7CD;
+  --fair-fill:  #C87716;
+  --poor:       #A83545;
+  --poor-soft:  #F8E3E6;
+  --poor-fill:  #C4404F;
+
+  --score-1: #D9A76A;
+  --score-2: #C38C4C;
+  --score-3: #A96E31;
+  --score-4: #89511C;
+  --score-5: #663B10;
+
+  --brand:      #96530B;
+  --brand-ink:  #FFFCF6;
+
+  --shadow-panel: 0 1px 2px rgba(43, 29, 20, 0.05), 0 8px 24px -12px rgba(43, 29, 20, 0.20);
+  --shadow-card:  0 1px 2px rgba(43, 29, 20, 0.06);
+  --shadow-lift:  0 2px 4px rgba(43, 29, 20, 0.07), 0 12px 28px -10px rgba(43, 29, 20, 0.24);
+  --map-tiles: light;
+}
+
+/* ── 3. Night Swell — 새벽 다크 아웃. 야간·저조도용 ──────────────────── */
+:root[data-theme='night-swell'] {
+  color-scheme: dark;
+
+  --bg:         #0D1621;
+  --surface:    #141E2B;
+  --raised:     #1B2837;
+  --raised-hi:  #233246;
+  --line:       #35485F;
+  --line-soft:  #253346;
+
+  --ink:        #EAF2F8;
+  --ink-2:      #AFC4D4;
+  --ink-3:      #8AA2B5;
+  --ink-mark:   #6A8296;
+
+  --gold:       #F5B841;
+  --gold-hi:    #FFD27A;
+  --gold-soft:  #3A2E16;
+  --tide:       #4FC7E8;
+  --tide-soft:  #12313E;
+  --rose:       #F58484;
+  --rose-soft:  #3B2026;
+
+  --good:       #4ADE9E;
+  --good-soft:  #123326;
+  --good-fill:  #4ADE9E;
+  --fair:       #F5B841;
+  --fair-soft:  #3A2E16;
+  --fair-fill:  #F5B841;
+  --poor:       #F87A8E;
+  --poor-soft:  #3B1F26;
+  --poor-fill:  #F87A8E;
+
+  --score-1: #2F5B76;
+  --score-2: #3E7796;
+  --score-3: #5194B4;
+  --score-4: #6FB2D0;
+  --score-5: #96CFE7;
+
+  --brand:      #4FC7E8;
+  --brand-ink:  #0D1621;
+
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 16px 40px -20px rgba(0, 0, 0, 0.8);
+  --shadow-card:  0 1px 0 rgba(255, 255, 255, 0.03) inset;
+  --shadow-lift:  0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 18px 36px -14px rgba(0, 0, 0, 0.85);
+  --map-tiles: dark;
+}
+
+:root {
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px;
+}
+
+@layer base {
+  body {
+    background-color: var(--bg);
+    color: var(--ink-2);
+    @apply min-h-screen font-sans antialiased;
+    transition: background-color 240ms ease, color 240ms ease;
+  }
+
+  ::selection {
+    background: var(--brand);
+    color: var(--brand-ink);
+  }
+
+  /* 위계는 굵기가 아니라 크기·색으로. (예전 코드는 거의 전부 font-black 이었습니다) */
+  h1 { @apply text-2xl sm:text-3xl font-bold tracking-tight; color: var(--ink); }
+  h2 { @apply text-lg font-semibold tracking-tight; color: var(--ink); }
+  h3 { @apply text-base font-semibold tracking-tight; color: var(--ink); }
+  h4 { @apply text-sm font-semibold; color: var(--ink); }
+
+  /* 열을 이루는 숫자만 등폭. 큰 히어로 숫자는 비례 숫자가 더 촘촘합니다 */
+  .num, table td, table th { font-variant-numeric: tabular-nums; }
+
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+@layer components {
+  /* ---- 표면 ------------------------------------------------------------ */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--r-xl);
+    box-shadow: var(--shadow-panel);
+  }
+
+  .panel-glass {
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    backdrop-filter: blur(16px) saturate(150%);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .card {
+    background: var(--raised);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-card);
+  }
+
+  .card-interactive {
+    @apply card transition-all duration-150;
+    cursor: pointer;
+  }
+  .card-interactive:hover {
+    background: var(--raised-hi);
+    border-color: var(--line);
+  }
+
+  /* ---- 세그먼티드 컨트롤 ------------------------------------------------ */
+  .segmented {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    background: var(--raised-hi);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--r-md);
+  }
+  .segmented > button {
+    @apply px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors duration-150;
+    color: var(--ink-3);
+  }
+  .segmented > button:hover { color: var(--ink); }
+  .segmented > button[aria-selected='true'] {
+    background: var(--surface);
+    color: var(--ink);
+    font-weight: 600;
+    box-shadow: var(--shadow-card);
+  }
+
+  /* ---- 라벨 / 배지 ------------------------------------------------------ */
+  .label-eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.08em];
+    color: var(--ink-3);
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium whitespace-nowrap;
+  }
+  .badge-good { background: var(--good-soft); color: var(--good); }
+  .badge-fair { background: var(--fair-soft); color: var(--fair); }
+  .badge-poor { background: var(--poor-soft); color: var(--poor); }
+  .badge-tide { background: var(--tide-soft); color: var(--tide); }
+  .badge-gold { background: var(--gold-soft); color: var(--gold); }
+  .badge-mute { background: var(--raised-hi); color: var(--ink-3); }
+
+  .live-dot {
+    width: 6px; height: 6px; border-radius: 9999px;
+    background: currentColor;
+    animation: livePulse 2.4s ease-out infinite;
+  }
+
+  /* ---- 버튼 ------------------------------------------------------------- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors duration-150;
+  }
+  .btn-primary { background: var(--brand); color: var(--brand-ink); }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-ghost {
+    background: var(--raised);
+    color: var(--ink-2);
+    border: 1px solid var(--line);
+  }
+  .btn-ghost:hover { background: var(--raised-hi); color: var(--ink); }
+
+  /* ---- 스켈레톤 --------------------------------------------------------- */
+  .skeleton {
+    background: linear-gradient(90deg, var(--raised) 0%, var(--raised-hi) 50%, var(--raised) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+    border-radius: var(--r-md);
+  }
+}
+
+@layer utilities {
+  .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+
+  .fade-edge-x {
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 24px), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 24px), transparent 100%);
+  }
+}
+
+/* ---- 애니메이션 --------------------------------------------------------- */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes livePulse {
+  0%   { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+  70%  { box-shadow: 0 0 0 5px transparent; opacity: 0.85; }
+  100% { box-shadow: 0 0 0 0 transparent; opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---- Leaflet 테마 연동 --------------------------------------------------- */
+.leaflet-container { background: var(--raised-hi); font-family: inherit; }
+
+.leaflet-control-zoom a {
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  border-color: var(--line) !important;
+}
+.leaflet-control-zoom a:hover { background: var(--raised-hi) !important; }
+
+.leaflet-control-attribution {
+  background: color-mix(in srgb, var(--surface) 85%, transparent) !important;
+  color: var(--ink-mark) !important;
+  font-size: 10px !important;
+}
+.leaflet-control-attribution a { color: var(--ink-3) !important; }
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: var(--surface) !important;
+  color: var(--ink-2) !important;
+  border: 1px solid var(--line) !important;
+  box-shadow: var(--shadow-lift) !important;
+}
+.leaflet-popup-content-wrapper { border-radius: var(--r-md) !important; }
+.leaflet-popup-content { margin: 12px 14px !important; }
+
+/* ---- 스크롤바 ----------------------------------------------------------- */
+::-webkit-scrollbar { height: 8px; width: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-mark); }
