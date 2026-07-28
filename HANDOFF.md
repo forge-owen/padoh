@@ -132,6 +132,66 @@ UI 라벨에 "AI" 라고 쓰지 않았습니다 — 실제로 모델을 부르�
 
 ---
 
+---
+
+# [4차] U. 도메인 · 브랜딩 · 문의 메일 (2026-07-28)
+
+> ⚠️ **병렬 작업 주의** — 이 항목은 Cloudflare 계정 설정을 건드립니다.
+> 다른 세션에서 DNS/도메인을 만지고 있다면 아래 상태를 먼저 확인하세요.
+
+## U.1 이름
+
+**파도(padoh) → WWF — Weekend Wave Finder** 로 개명.
+헤더 · `<title>` · OG 메타 · README 반영.
+
+- 저작권: **© 2026 forge**
+- 문의: **wwf@forges.work** (푸터에 mailto 링크)
+
+## U.2 Cloudflare 현재 상태
+
+| 항목 | 상태 |
+|---|---|
+| Zone `forges.work` | active · account `OBVS.WORK` (`9e9dc8ef…`) — Pages 계정과 **동일** |
+| Pages 프로젝트 | `padoh` (내부 이름. Cloudflare 는 프로젝트 개명 불가) |
+| 커스텀 도메인 `wwf.forges.work` | 등록됨 · **status: pending** ← DNS 대기 |
+| Email Routing | enabled · synced · MX/SPF 정상 |
+| 목적지 `obvs.work@gmail.com` | **인증 완료** |
+| 규칙 `wwf@forges.work` → `obvs.work@gmail.com` | **ON** (수신 즉시 동작) |
+
+## U.3 🔴 남은 한 가지 — CNAME 레코드
+
+`wwf.forges.work` 가 아직 뜨지 않는 이유는 **DNS CNAME 레코드가 없어서**입니다.
+
+wrangler 의 OAuth 토큰에는 `zone (read)` 만 있고 **`dns_records` 쓰기 권한이 없습니다.**
+(`/zones/{id}/dns_records` POST → `code 10000 Authentication error`)
+Pages 커스텀 도메인 API 는 이 플로우에서 DNS 를 자동 생성해 주지 않습니다.
+
+**필요한 레코드 (딱 1개):**
+
+```
+Type    : CNAME
+Name    : wwf
+Target  : padoh.pages.dev
+Proxy   : Proxied (주황 구름 ON)
+TTL     : Auto
+```
+
+추가하면 Pages 가 자동으로 검증 → SSL 발급까지 진행합니다(보통 1~3분).
+
+## U.4 이름 불일치 — 의도적으로 두었습니다
+
+앱 이름은 WWF 인데 **GitHub 레포와 Pages 프로젝트는 `padoh`** 로 남아 있습니다.
+
+- Pages 프로젝트는 Cloudflare 가 개명을 지원하지 않습니다(삭제 후 재생성만 가능).
+  재생성하면 `padoh.pages.dev` 주소와 배포 이력이 사라집니다.
+- GitHub 레포 개명은 가능하지만, **병렬 작업 경고가 있어 임의로 바꾸지 않았습니다.**
+  다른 세션의 git remote 가 깨질 수 있습니다.
+
+커스텀 도메인이 붙으면 사용자에게 보이는 주소는 `wwf.forges.work` 뿐이라 실사용에는 영향이
+없습니다. 정리하고 싶다면 다른 세션 작업이 끝난 뒤 결정하세요.
+
+---
+
 # [3차-c] V. 컨디션 카드를 두 줄로 · 스트립 바로 아래로
 
 ## V.1 무엇이 문제였나
