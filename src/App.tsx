@@ -31,7 +31,7 @@ import {
 } from './services/surfApi';
 import { RegionKey, HourlyForecast, DailyForecast } from './types/surf';
 import { ThemeId, getStoredTheme, applyTheme, themeMeta } from './utils/theme';
-import { AlertCircle, Waves } from 'lucide-react';
+import { AlertCircle, Waves, Mail } from 'lucide-react';
 
 /** 타임스탬프를 로컬 기준 YYYY-MM-DD 로. toISOString 은 UTC 라 날짜가 밀립니다. */
 function localISO(ts: number): string {
@@ -230,14 +230,28 @@ export const App: React.FC = () => {
           className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs"
           style={{ color: 'var(--ink-3)' }}
         >
-          <div className="inline-flex items-center gap-2">
-            <Waves className="w-4 h-4" style={{ color: 'var(--brand)' }} />
+          <div className="inline-flex items-center gap-2 flex-wrap justify-center">
+            <Waves className="w-4 h-4 shrink-0" style={{ color: 'var(--brand)' }} />
             <span className="font-semibold" style={{ color: 'var(--ink-2)' }}>
-              파도 (padoh)
+              WWF
             </span>
-            <span>· 예보 Open-Meteo · 지도 OpenStreetMap &amp; CARTO</span>
+            <span>Weekend Wave Finder</span>
+            <span style={{ color: 'var(--ink-mark)' }}>·</span>
+            <span>예보 Open-Meteo · 지도 OpenStreetMap &amp; CARTO</span>
           </div>
-          <p>© 2026 padoh · Weekly Wave Finder</p>
+
+          <div className="inline-flex items-center gap-3 flex-wrap justify-center">
+            <a
+              href="mailto:wwf@forges.work"
+              className="inline-flex items-center gap-1.5 transition-colors hover:underline"
+              style={{ color: 'var(--ink-2)' }}
+            >
+              <Mail className="w-3.5 h-3.5" style={{ color: 'var(--brand)' }} />
+              wwf@forges.work
+            </a>
+            <span style={{ color: 'var(--ink-mark)' }}>·</span>
+            <p>© 2026 forge</p>
+          </div>
         </div>
       </footer>
     </div>

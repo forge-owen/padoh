@@ -1,9 +1,9 @@
-# 파도 (padoh) — Weekly Wave Finder
+# WWF — Weekend Wave Finder
 
-> 대한민국 7대 서핑 스팟의 **16일 파도 예보**를 "이번 주 언제 들어가지?" 한 가지 질문에 맞춰
+> 대한민국 7대 서핑 스팟의 **16일 파도 예보**를 "이번 주말 언제 들어가지?" 한 가지 질문에 맞춰
 > 다시 짠 서핑 예보 대시보드.
 
-**🔗 [padoh.pages.dev](https://padoh.pages.dev)**
+**🔗 [wwf.forges.work](https://wwf.forges.work)**
 
 ---
 
@@ -17,7 +17,7 @@
 - 하루를 하나의 값으로 뭉갭니다. 실제로는 같은 날에도 오전 육풍과 오후 해풍으로
   컨디션이 완전히 갈립니다.
 
-파도는 그 세 가지를 정면으로 다룹니다.
+WWF 는 그 세 가지를 정면으로 다룹니다.
 
 ---
 
@@ -90,7 +90,7 @@ E = 4.9 × H² × T        (H: 파고 m, T: 주기 s)
 | Styling | Tailwind CSS 3 + CSS 변수 `[data-theme]` 토큰 |
 | Map | Leaflet + OpenStreetMap / CARTO 타일 |
 | Data | [Open-Meteo](https://open-meteo.com) Marine & Forecast API (16일 / 384시간) |
-| Hosting | Cloudflare Pages |
+| Hosting | Cloudflare Pages (`wwf.forges.work`) |
 
 **API 키가 필요 없습니다.** Open-Meteo 는 비상업적 이용에 무료이고 키를 요구하지 않습니다.
 
@@ -144,3 +144,10 @@ src/
 
 > ⚠️ 이 앱의 판정은 수치 모델 기반 참고 자료입니다. 실제 입수 전에는 반드시 현장 상황과
 > 기상 특보를 확인하세요. 이안류·너울 사고는 예보가 좋아 보일 때도 발생합니다.
+
+---
+
+## 문의 · 권리
+
+- 문의: **wwf@forges.work**
+- © 2026 **forge**. All rights reserved.
