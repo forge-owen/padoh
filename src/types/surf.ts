@@ -84,6 +84,12 @@ export interface HourlyForecast {
    * 의미가 없습니다 — 0 을 그리면 "간조"처럼 보여 사용자를 오해시킵니다.
    */
   tideAvailable: boolean;
+  /**
+   * 이 시각의 조위가 **관측 모델이 아니라 조화분해 예측값**인가.
+   * 조석은 천문 현상이라 연장 계산이 가능하지만, 9일 샘플로 맞춘 값이므로
+   * 국립해양조사원 물때표를 대체하지 않습니다. UI 에 반드시 표시하세요.
+   */
+  tidePredicted: boolean;
   surfScore: number;
   rating: SurfRating;
   starType: StarType;
@@ -142,8 +148,10 @@ export interface DailyForecast {
   starCount: number;
   recommendation: string;
 
-  /** 이 날짜에 조위 예보가 있는가 (약 9일까지) */
+  /** 이 날짜에 조위 값이 있는가 (모델 또는 조화분해 예측) */
   hasTide: boolean;
+  /** 그 조위가 조화분해 예측값인가 (모델 제공 범위 밖) */
+  tidePredicted: boolean;
   /**
    * 예보 신뢰도. 파도 모델은 멀어질수록 급격히 맞지 않습니다.
    *   HIGH   D+0~2  — 실질적으로 믿을 만함

@@ -12,7 +12,7 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import { HourlyForecast, DailyForecast } from '../types/surf';
-import { Droplets, ArrowUp, ArrowDown, CalendarOff } from 'lucide-react';
+import { Droplets, ArrowUp, ArrowDown, CalendarOff, FunctionSquare } from 'lucide-react';
 
 interface TideChartProps {
   /** 이미 선택된 날짜로 걸러진 시간별 예보 */
@@ -160,6 +160,18 @@ export const TideChart: React.FC<TideChartProps> = ({ forecasts, day }) => {
           <p className="text-xs text-ink-3 mt-1">
             평균해수면 기준 조위 변화. 만조·간조 시각에 맞춰 라인업 타이밍을 잡으세요.
           </p>
+          {/* 모델 제공 범위(약 9일) 밖은 조화분해로 연장한 값입니다.
+              출처가 다른 값을 같은 얼굴로 보여 주면 안 됩니다. */}
+          {day.tidePredicted && (
+            <p className="text-[11px] mt-1.5 inline-flex items-start gap-1.5" style={{ color: 'var(--gold)' }}>
+              <FunctionSquare className="w-3.5 h-3.5 shrink-0 mt-px" />
+              <span>
+                <strong>조화분해 예측값</strong> — 조위 모델은 약 9일까지만 제공돼, 앞 구간에
+                조석 상수를 맞춰 연장했습니다. 만조·간조 <strong>시각은 30분~1시간</strong> 오차로
+                맞지만 정확한 수위가 필요하면 국립해양조사원 물때표를 확인하세요.
+              </span>
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-4 text-xs">
@@ -217,7 +229,15 @@ export const TideChart: React.FC<TideChartProps> = ({ forecasts, day }) => {
           ))}
 
           <path d={area} fill="url(#tideFill)" />
-          <path d={d} fill="none" stroke="var(--tide)" strokeWidth="2" strokeLinecap="round" />
+          <path
+            d={d}
+            fill="none"
+            stroke="var(--tide)"
+            strokeWidth="2"
+            strokeLinecap="round"
+            /* 예측 구간은 점선 — 색이 아니라 선 모양으로 구분합니다 */
+            strokeDasharray={day.tidePredicted ? '5 4' : undefined}
+          />
 
           {/* 극점 직접 라벨 (모든 점이 아니라 만조/간조에만) */}
           {extremes.map((p) => (

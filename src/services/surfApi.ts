@@ -16,6 +16,7 @@ import {
 } from '../types/surf';
 import { calculateSwellEnergy, calculateWindType, evaluateSurfScore, getDirectionText } from '../utils/surfScoreEngine';
 import { representativeWeatherCode } from '../utils/weather';
+import { extendTideSeries } from '../utils/tideHarmonics';
 
 /** Open-Meteo marine·forecast 양쪽이 지원하는 최대 일수 (384시간, 실측 확인) */
 export const FORECAST_DAYS = 16;
@@ -80,10 +81,18 @@ export async function fetchLive16DaysForecasts(spotId: string): Promise<{
     const waveHeights = mergeModels('wave_height');
     const wavePeriods = mergeModels('wave_period');
     const swellDirs = mergeModels('swell_wave_direction');
-    // 조위는 best_match 에만 있습니다 (gfswave 는 전부 null)
+    /**
+     * 조위 — best_match 에만 있고(gfswave 는 전부 null) 약 9일에서 끊깁니다.
+     *
+     * 조석은 **천문 현상**이라 원리상 연장 계산이 가능합니다. 받아 온 구간에
+     * 조화 상수를 맞춰 나머지를 예측합니다(utils/tideHarmonics.ts).
+     * 조석이 지배적이지 않은 해역(동해, 조차 40cm 남짓)에서는 적합이 스스로
+     * 거부되고 null 로 남습니다 — 틀린 조위는 없는 것보다 나쁩니다.
+     */
     const seaLevelsRaw: (number | null)[] =
       marineData.hourly.sea_level_height_msl_marine_best_match ?? [];
-    const seaLevels: number[] = seaLevelsRaw.map((v) => v ?? 0);
+    const { filled: seaLevelsFilled, predictedFrom } = extendTideSeries(seaLevelsRaw);
+    const seaLevels: number[] = seaLevelsFilled.map((v) => v ?? 0);
     const windWaveHeights = mergeModels('wind_wave_height');
     const windWaveDirs = mergeModels('wind_wave_direction');
     const windSpeeds: number[] = weatherData.hourly.wind_speed_10m;
@@ -122,8 +131,10 @@ export async function fetchLive16DaysForecasts(spotId: string): Promise<{
         }
       }
 
-      // 조위: m → cm. 데이터가 없는 구간(약 9일 이후)은 0 으로 채우되 플래그로 구분합니다.
-      const tideAvailable = seaLevelsRaw[i] !== null && seaLevelsRaw[i] !== undefined;
+      // 조위: m → cm. 모델값 / 조화분해 예측값 / 없음 세 가지를 구분합니다.
+      const tideAvailable = seaLevelsFilled[i] !== null && seaLevelsFilled[i] !== undefined;
+      const tidePredicted =
+        tideAvailable && predictedFrom !== null && i >= predictedFrom;
       const tideHeightCm = Math.round((seaLevels[i] ?? 0) * 100);
       const tideState = classifyTide(seaLevels, i);
 
@@ -150,6 +161,7 @@ export async function fetchLive16DaysForecasts(spotId: string): Promise<{
         tideHeightCm,
         tideState,
         tideAvailable,
+        tidePredicted,
         surfScore: evaluation.score,
         rating: evaluation.rating,
         starType: evaluation.starType,
@@ -292,6 +304,7 @@ function summarizeDay(dateISO: string, items: HourlyForecast[]): DailyForecast {
     dateStr: `${dObj.getMonth() + 1}/${dObj.getDate()}`,
     fullDateISO: dateISO,
     hasTide: items.some((it) => it.tideAvailable),
+    tidePredicted: items.some((it) => it.tideAvailable) && items.every((it) => !it.tideAvailable || it.tidePredicted),
     confidence,
     dayOfWeek: dayOfWeekStr,
     isWeekend: dObj.getDay() === 0 || dObj.getDay() === 6,
@@ -460,6 +473,7 @@ function generateFallback16Days(spot: SurfSpot) {
       tideHeightCm: Math.round(tideSeries[h] * 100),
       tideState: classifyTide(tideSeries, h),
       tideAvailable: true, // 폴백은 조위 곡선을 스스로 만들므로 항상 값이 있습니다
+      tidePredicted: false,
       surfScore: evaluation.score,
       rating: evaluation.rating,
       starType: evaluation.starType,
@@ -521,6 +535,17 @@ export const PART_OPTIONS: { key: PartKey; label: string; from: number; to: numb
  *  marine 178KB + weather 86KB 로 충분히 가볍습니다.)
  */
 export const NEARBY_DAYS = 16;
+
+/**
+ * 랭킹에 넣을 최대 거리(km).
+ *
+ * 없으면 스팟이 드문 서해에서 **284km 떨어진 동해 스팟이 1위로 올라옵니다.**
+ * 점수순으로는 맞지만 "인접 지역"이 아니고, 당일치기로 갈 수 있는 거리도 아닙니다.
+ * 반대로 너무 좁히면 카드가 두세 장만 남으므로, 후보가 MIN 개 미만이면
+ * 거리 제한을 풀어 가까운 순으로 채웁니다.
+ */
+export const NEARBY_MAX_KM = 150;
+const NEARBY_MIN_CARDS = 4;
 
 export interface NearbyHour {
   timestamp: number;
@@ -611,7 +636,9 @@ export async function fetchNearbySeries(
     }
   }
 
-  const picked = [...cells.values()].sort((a, b) => a.d - b.d).slice(0, count);
+  const all = [...cells.values()].sort((a, b) => a.d - b.d);
+  const within = all.filter((c) => c.d <= NEARBY_MAX_KM);
+  const picked = (within.length >= NEARBY_MIN_CARDS ? within : all).slice(0, count);
 
   const lats = picked.map((p) => p.s.latitude).join(',');
   const lons = picked.map((p) => p.s.longitude).join(',');
