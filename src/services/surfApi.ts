@@ -8,6 +8,7 @@
 
 import {
   SurfSpot,
+  WindType,
   HourlyForecast,
   DailyForecast,
   DayPart,
@@ -443,4 +444,281 @@ function generateFallback16Days(spot: SurfSpot) {
     hourly,
     daily16Days: dailyList,
   };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   주변 지역 랭킹 — "그래서 어디로 가지?"
+   --------------------------------------------------------------------------
+   16일 스트립은 **"이 스팟이 언제 좋은가"** 를 답합니다. 그런데 주말 아침에 먼저
+   나오는 질문은 하나 더 있습니다: **"오늘/토요일 오후에 어디가 제일 나은가?"**
+
+   그래서 주변 지역을 날짜·시간대 기준으로 점수순 정렬해 최상단에 놓습니다.
+
+   수집은 **한 번만** 합니다(요청 2개). 날짜·시간대를 바꾸면 네트워크를 다시 타지 않고
+   받아 둔 시계열을 다시 집계할 뿐입니다 — 옵션을 누를 때마다 로딩이 걸리면
+   비교 자체가 안 됩니다.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** 하루를 나누는 구간 — 스트립의 아침/낮/오후와 같은 정의를 씁니다 */
+export type PartKey = 'ALL' | '아침' | '낮' | '오후';
+
+export const PART_OPTIONS: { key: PartKey; label: string; from: number; to: number }[] = [
+  { key: 'ALL', label: '종일', from: SURFABLE_HOURS.from, to: SURFABLE_HOURS.to },
+  { key: '아침', label: '아침', from: 5, to: 10 },
+  { key: '낮', label: '낮', from: 11, to: 15 },
+  { key: '오후', label: '오후', from: 16, to: 20 },
+];
+
+/**
+ * 랭킹용 수집 일수.
+ *
+ * 16일 전부를 8개 스팟에 대해 받으면 응답이 수 MB 가 돼 모바일에서 부담입니다.
+ * 이 기능이 답하는 질문은 "이번 주말 어디로" 라서 7일이면 어떤 요일을 골라도
+ * 다음 주말이 항상 들어옵니다.
+ */
+export const NEARBY_DAYS = 7;
+
+export interface NearbyHour {
+  timestamp: number;
+  hour: number;
+  dateISO: string;
+  score: number;
+  waveHeightM: number;
+  swellPeriodS: number;
+  windSpeedKmh: number;
+  windDirectionDeg: number;
+  windType: WindType;
+}
+
+export interface NearbySpotSeries {
+  spot: SurfSpot;
+  /** 선택 스팟으로부터의 거리(km) */
+  distanceKm: number;
+  /** 같은 해양 격자에 묶여 예보가 동일한 다른 스팟 수 */
+  sameCellCount: number;
+  hours: NearbyHour[];
+}
+
+export interface NearbySpotRanked {
+  spot: SurfSpot;
+  bestScore: number;
+  /** 그 점수가 나오는 시각 ('09:00') */
+  bestTime: string;
+  /** 비슷하게 좋은 구간 ('09–13시'). 한 시간뿐이면 null */
+  bestWindow: string | null;
+  waveHeightM: number;
+  swellPeriodS: number;
+  windSpeedKmh: number;
+  windDirectionDeg: number;
+  windType: WindType;
+  distanceKm: number;
+  sameCellCount: number;
+  isSelected: boolean;
+}
+
+/** 두 좌표 사이 대략 거리(km). 한반도 위도에서 충분히 정확합니다. */
+function roughDistanceKm(aLat: number, aLon: number, bLat: number, bLon: number): number {
+  const dLat = (aLat - bLat) * 111;
+  const dLon = (aLon - bLon) * 88; // 위도 37° 기준 경도 1° ≈ 88km
+  return Math.sqrt(dLat * dLat + dLon * dLon);
+}
+
+/**
+ * 선택 스팟 주변 지역의 시계열을 한 번에 가져옵니다.
+ * Open-Meteo 는 위경도를 콤마로 이어 붙이면 여러 좌표를 한 번에 주므로
+ * 스팟이 몇 개든 요청은 2개(marine + forecast)로 끝납니다.
+ */
+export async function fetchNearbySeries(
+  spotId: string,
+  count = 8
+): Promise<NearbySpotSeries[]> {
+  const origin = KOREA_SURF_SPOTS.find((s) => s.id === spotId) ?? KOREA_SURF_SPOTS[0];
+
+  /**
+   * ⚠️ 그냥 '가까운 8곳'을 뽑으면 카드 8개가 전부 같은 숫자로 나옵니다.
+   *
+   * Open-Meteo 해양 격자는 약 0.083°(≈9km)라, 양양처럼 스팟이 밀집한 구간은
+   * 38선·하조대·죽도·인구·동호가 **같은 격자 한 칸**에 들어갑니다. 파고·주기가
+   * 물리적으로 동일하니 점수도 같게 나오고, 랭킹이 그냥 거리순 목록이 됩니다.
+   *
+   * 그래서 **격자 한 칸당 한 곳만** 대표로 세웁니다. 카드마다 실제로 다른 예보가
+   * 실리고, 사용자가 원한 "인접 지역 비교"의 단위와도 맞습니다.
+   */
+  const GRID = 1 / 12; // Open-Meteo marine 격자 간격 (0.0833°)
+  const cellKey = (s: SurfSpot) =>
+    `${Math.round(s.latitude / GRID)},${Math.round(s.longitude / GRID)}`;
+
+  const byDistance = [...KOREA_SURF_SPOTS]
+    .map((s) => ({ s, d: roughDistanceKm(origin.latitude, origin.longitude, s.latitude, s.longitude) }))
+    .sort((a, b) => a.d - b.d);
+
+  const cells = new Map<string, { s: SurfSpot; d: number; siblings: number }>();
+  for (const cand of byDistance) {
+    const key = cellKey(cand.s);
+    const seen = cells.get(key);
+    if (!seen) {
+      cells.set(key, { ...cand, siblings: 0 });
+    } else {
+      seen.siblings += 1;
+      // 선택한 스팟은 대표 자리를 양보하지 않습니다 — 내가 보는 곳이 목록에서 빠지면 안 됩니다
+      if (cand.s.id === origin.id) {
+        cells.set(key, { s: cand.s, d: cand.d, siblings: seen.siblings });
+      }
+    }
+  }
+
+  const picked = [...cells.values()].sort((a, b) => a.d - b.d).slice(0, count);
+
+  const lats = picked.map((p) => p.s.latitude).join(',');
+  const lons = picked.map((p) => p.s.longitude).join(',');
+
+  const marineUrl =
+    `https://marine-api.open-meteo.com/v1/marine?latitude=${lats}&longitude=${lons}` +
+    `&hourly=wave_height,wave_period,swell_wave_direction,sea_level_height_msl&forecast_days=${NEARBY_DAYS}&timezone=Asia%2FSeoul`;
+  const weatherUrl =
+    `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
+    `&hourly=wind_speed_10m,wind_direction_10m&forecast_days=${NEARBY_DAYS}&timezone=Asia%2FSeoul`;
+
+  const [marineRes, weatherRes] = await Promise.all([fetch(marineUrl), fetch(weatherUrl)]);
+  if (!marineRes.ok || !weatherRes.ok) throw new Error('주변 지역 예보 응답 실패');
+
+  const marineJson = await marineRes.json();
+  const weatherJson = await weatherRes.json();
+  // 좌표가 여러 개면 배열, 하나면 객체로 옵니다
+  const marineArr = Array.isArray(marineJson) ? marineJson : [marineJson];
+  const weatherArr = Array.isArray(weatherJson) ? weatherJson : [weatherJson];
+
+  const out: NearbySpotSeries[] = [];
+
+  picked.forEach(({ s: spot, d, siblings }, idx) => {
+    const m = marineArr[idx];
+    const w = weatherArr[idx];
+    if (!m?.hourly?.time || !w?.hourly?.time) return;
+
+    const times: string[] = m.hourly.time;
+    const heights: number[] = m.hourly.wave_height ?? [];
+    const periods: number[] = m.hourly.wave_period ?? [];
+    const swellDirs: number[] = m.hourly.swell_wave_direction ?? [];
+    const seaLevels: number[] = m.hourly.sea_level_height_msl ?? [];
+    const windSpeeds: number[] = w.hourly.wind_speed_10m ?? [];
+    const windDirs: number[] = w.hourly.wind_direction_10m ?? [];
+
+    const hours: NearbyHour[] = [];
+
+    for (let i = 0; i < times.length; i++) {
+      const dateObj = new Date(times[i]);
+      const hour = dateObj.getHours();
+      // 밤에는 바람이 잦아들어 글래시가 되므로 점수가 높게 나옵니다.
+      // 물리적으로는 맞지만 서핑 예보로는 쓸모가 없어 낮 시간대만 담습니다.
+      if (hour < SURFABLE_HOURS.from || hour > SURFABLE_HOURS.to) continue;
+
+      const waveH = Math.round((heights[i] ?? 0) * 10) / 10;
+      const periodS = Math.round(periods[i] ?? 0);
+      const windKmh = Math.round(windSpeeds[i] ?? 0);
+      const windDeg = Math.round(windDirs[i] ?? spot.optimalWindDeg);
+      const windType = calculateWindType(windDeg, windKmh, spot.optimalWindDeg);
+      const { score } = evaluateSurfScore(
+        waveH,
+        periodS,
+        windKmh,
+        windType,
+        Math.round(swellDirs[i] ?? spot.optimalSwellDeg),
+        spot.optimalSwellDeg,
+        classifyTide(seaLevels, i)
+      );
+
+      hours.push({
+        timestamp: dateObj.getTime(),
+        hour,
+        dateISO: `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`,
+        score,
+        waveHeightM: waveH,
+        swellPeriodS: periodS,
+        windSpeedKmh: windKmh,
+        windDirectionDeg: windDeg,
+        windType,
+      });
+    }
+
+    if (hours.length > 0) {
+      out.push({ spot, distanceKm: Math.round(d), sameCellCount: siblings, hours });
+    }
+  });
+
+  return out;
+}
+
+/** 랭킹 행의 날짜 칩 목록 — 받아 둔 시계열에서 그대로 뽑습니다 */
+export function nearbyDateOptions(
+  series: NearbySpotSeries[]
+): { dateISO: string; label: string; sub: string; isWeekend: boolean }[] {
+  const seen = new Map<string, Date>();
+  for (const s of series) {
+    for (const h of s.hours) if (!seen.has(h.dateISO)) seen.set(h.dateISO, new Date(h.timestamp));
+  }
+  const today = todayISO();
+  const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+  return [...seen.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([dateISO, d], i) => ({
+      dateISO,
+      label: dateISO === today ? '오늘' : i === 1 ? '내일' : WEEK[d.getDay()],
+      sub: `${d.getMonth() + 1}/${d.getDate()}`,
+      isWeekend: d.getDay() === 0 || d.getDay() === 6,
+    }));
+}
+
+/**
+ * 고른 날짜·시간대 기준으로 지역을 점수순 정렬합니다.
+ *
+ * 네트워크를 타지 않습니다 — 이미 받아 둔 시계열을 다시 집계할 뿐이라
+ * 옵션을 눌러도 즉시 바뀝니다.
+ */
+export function rankNearby(
+  series: NearbySpotSeries[],
+  dateISO: string,
+  part: PartKey,
+  selectedSpotId: string
+): NearbySpotRanked[] {
+  const slot = PART_OPTIONS.find((p) => p.key === part) ?? PART_OPTIONS[0];
+
+  const ranked = series.flatMap((entry) => {
+    const inRange = entry.hours.filter(
+      (h) => h.dateISO === dateISO && h.hour >= slot.from && h.hour <= slot.to
+    );
+    if (inRange.length === 0) return [];
+
+    const best = inRange.reduce((a, b) => (b.score > a.score ? b : a), inRange[0]);
+
+    // 최고점 주변으로 "비슷하게 좋은" 구간을 넓혀 시간대를 만듭니다.
+    // 점 하나만 찍어 주면 "9시에만 좋은 건가?" 가 남습니다.
+    const threshold = Math.max(0, best.score - 8);
+    const bestIdx = inRange.indexOf(best);
+    let from = bestIdx;
+    let to = bestIdx;
+    while (from - 1 >= 0 && inRange[from - 1].score >= threshold) from--;
+    while (to + 1 < inRange.length && inRange[to + 1].score >= threshold) to++;
+
+    const pad = (n: number) => String(n).padStart(2, '0');
+
+    return [
+      {
+        spot: entry.spot,
+        bestScore: best.score,
+        bestTime: `${pad(best.hour)}:00`,
+        bestWindow: to > from ? `${pad(inRange[from].hour)}–${pad(inRange[to].hour)}시` : null,
+        waveHeightM: best.waveHeightM,
+        swellPeriodS: best.swellPeriodS,
+        windSpeedKmh: best.windSpeedKmh,
+        windDirectionDeg: best.windDirectionDeg,
+        windType: best.windType,
+        distanceKm: entry.distanceKm,
+        sameCellCount: entry.sameCellCount,
+        isSelected: entry.spot.id === selectedSpotId,
+      },
+    ];
+  });
+
+  // 점수 내림차순. 같으면 가까운 순.
+  return ranked.sort((a, b) => b.bestScore - a.bestScore || a.distanceKm - b.distanceKm);
 }

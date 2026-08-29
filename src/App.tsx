@@ -18,6 +18,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Header } from './components/Header';
 import { SpotHeader } from './components/SpotHeader';
 import { ForecastStrip } from './components/ForecastStrip';
+import { NearbyRanking } from './components/NearbyRanking';
 import { HourlyForecastTable } from './components/HourlyForecastTable';
 import { SpotMapView } from './components/SpotMapView';
 import { TideChart } from './components/TideChart';
@@ -25,6 +26,8 @@ import { SpotGuideModal } from './components/SpotGuideModal';
 import {
   KOREA_SURF_SPOTS,
   fetchLive16DaysForecasts,
+  fetchNearbySeries,
+  NearbySpotSeries,
   getDailyHighlight,
   buildBriefing,
   pickBestSurfableHour,
@@ -70,6 +73,10 @@ export const App: React.FC = () => {
   const [dailyList, setDailyList] = useState<DailyForecast[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  /** 주변 지역 시계열 — 선택 스팟 예보와 별개로 병렬 수집합니다 */
+  const [nearby, setNearby] = useState<NearbySpotSeries[]>([]);
+  const [isNearbyLoading, setIsNearbyLoading] = useState(true);
 
   useEffect(() => {
     applyTheme(theme);
@@ -135,6 +142,34 @@ export const App: React.FC = () => {
     };
   }, [selectedSpotId, refetchToken]);
 
+  /**
+   * 주변 지역 시계열 수집.
+   *
+   * 선택 스팟 예보와 **별도 이펙트**로 둡니다. 하나로 묶으면 8곳 수집이 끝날 때까지
+   * 선택 스팟의 16일 스트립까지 같이 기다리게 됩니다. 둘은 서로 필요하지 않습니다.
+   */
+  useEffect(() => {
+    let isMounted = true;
+    setIsNearbyLoading(true);
+
+    fetchNearbySeries(selectedSpotId, 8)
+      .then((list: NearbySpotSeries[]) => {
+        if (!isMounted) return;
+        setNearby(list);
+        setIsNearbyLoading(false);
+      })
+      .catch((err: unknown) => {
+        console.error('주변 지역 랭킹 에러:', err);
+        if (!isMounted) return;
+        setNearby([]);
+        setIsNearbyLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedSpotId, refetchToken]);
+
   /* ── 선택 날짜로 스코프된 파생값들 ─────────────────────────────────── */
 
   const dayHourly = useMemo(
@@ -188,7 +223,17 @@ export const App: React.FC = () => {
       />
 
       <main className="flex-1 w-full max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-4">
-        {/* ── 1~2행: 스트립 + 컨디션 카드 ─────────────────────────────────
+        {/* ── 1행: 오늘 어디로 갈까 ────────────────────────────────────────
+            16일 스트립은 "이 스팟이 언제 좋은가"를 답합니다. 그 위에 "오늘은 어디가
+            제일 나은가"를 먼저 놓습니다 — 주말 아침에 실제로 먼저 하는 질문입니다. */}
+        <NearbyRanking
+          series={nearby}
+          isLoading={isNearbyLoading}
+          selectedSpotId={selectedSpotId}
+          onSelectSpot={pickSpot}
+        />
+
+        {/* ── 2~3행: 스트립 + 컨디션 카드 ─────────────────────────────────
             스팟을 바꾸면 이 두 패널만 스켈레톤으로 바뀝니다. 스켈레톤 높이를
             실제 패널과 맞춰 둬서 아래 지도가 위아래로 튀지 않습니다. */}
         {loadError ? (
