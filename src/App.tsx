@@ -39,12 +39,18 @@ function localISO(ts: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-const Skeleton: React.FC = () => (
-  <div className="space-y-5" aria-busy="true" aria-live="polite">
-    <span className="sr-only">예보 데이터를 불러오는 중입니다.</span>
-    <div className="skeleton h-[190px] rounded-2xl" />
-    <div className="skeleton h-[86px] rounded-2xl" />
-    <div className="skeleton h-[420px] rounded-2xl" />
+/**
+ * 자리를 지키는 스켈레톤.
+ *
+ * 높이를 실제 패널과 맞춰 받는 게 핵심입니다. 스팟을 바꿀 때 이 자리가 줄었다
+ * 늘었다 하면 그 아래 지도가 위아래로 튀어서, 지도를 다시 그린 것처럼 보입니다.
+ */
+const PanelSkeleton: React.FC<{ heights: number[]; label?: string }> = ({ heights, label }) => (
+  <div className="space-y-4" aria-busy="true" aria-live="polite">
+    {label && <span className="sr-only">{label}</span>}
+    {heights.map((h, i) => (
+      <div key={i} className="skeleton rounded-2xl" style={{ height: h }} />
+    ))}
   </div>
 );
 
@@ -90,10 +96,23 @@ export const App: React.FC = () => {
     [selectedSpotId]
   );
 
+  /**
+   * 스팟 예보 재요청.
+   *
+   * 이전 스팟의 예보를 그대로 두면 **새 스팟 이름 아래에 옛 스팟 숫자가** 잠깐
+   * 보입니다. 그래서 요청을 시작할 때 비웁니다 — 대신 화면은 스켈레톤이 자리를
+   * 지키고, 지도는 아예 언마운트되지 않습니다(아래 렌더 주석 참고).
+   */
+  const [refetchToken, setRefetchToken] = useState(0);
+  const refetch = () => setRefetchToken((n) => n + 1);
+
   useEffect(() => {
     let isMounted = true;
     setIsLoading(true);
     setLoadError(null);
+    setHourlyForecasts([]);
+    setDailyList([]);
+    setSelectedHourly(null);
 
     fetchLive16DaysForecasts(selectedSpotId)
       .then((data) => {
@@ -102,7 +121,6 @@ export const App: React.FC = () => {
         setDailyList(data.daily16Days);
         // 스팟이 바뀌면 날짜 선택은 항상 오늘로 되돌립니다
         setSelectedDateISO(data.daily16Days[0]?.fullDateISO ?? '');
-        setSelectedHourly(null);
         setIsLoading(false);
       })
       .catch((err) => {
@@ -115,7 +133,7 @@ export const App: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [selectedSpotId]);
+  }, [selectedSpotId, refetchToken]);
 
   /* ── 선택 날짜로 스코프된 파생값들 ─────────────────────────────────── */
 
@@ -147,6 +165,9 @@ export const App: React.FC = () => {
   const highlight = useMemo(() => getDailyHighlight(dayHourly), [dayHourly]);
   const briefing = useMemo(() => buildBriefing(dailyList), [dailyList]);
 
+  /** 예보 패널을 그릴 수 있는 상태인가 — 지도는 이 값과 무관하게 항상 그립니다 */
+  const ready = !isLoading && !loadError && !!activeForecast && !!selectedDay;
+
   const pickSpot = (id: string) => setSelectedSpotId(id);
 
   const pickDate = (dateISO: string) => {
@@ -167,59 +188,72 @@ export const App: React.FC = () => {
       />
 
       <main className="flex-1 w-full max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-4">
-        {isLoading ? (
-          <Skeleton />
-        ) : loadError || !activeForecast || !selectedDay ? (
+        {/* ── 1~2행: 스트립 + 컨디션 카드 ─────────────────────────────────
+            스팟을 바꾸면 이 두 패널만 스켈레톤으로 바뀝니다. 스켈레톤 높이를
+            실제 패널과 맞춰 둬서 아래 지도가 위아래로 튀지 않습니다. */}
+        {loadError ? (
           <div className="panel p-10 text-center space-y-3">
             <AlertCircle className="w-8 h-8 mx-auto" style={{ color: 'var(--poor)' }} />
             <p className="text-sm" style={{ color: 'var(--ink-2)' }}>
-              {loadError || '표시할 예보 데이터가 없습니다.'}
+              {loadError}
             </p>
-            <button className="btn btn-ghost mx-auto" onClick={() => pickSpot(selectedSpotId)}>
+            <button className="btn btn-ghost mx-auto" onClick={() => refetch()}>
               다시 시도
             </button>
           </div>
-        ) : (
+        ) : ready ? (
           <>
-            {/* 1행 — 메인 컨트롤 */}
             <ForecastStrip
               dailyList={dailyList}
               spot={currentSpot}
               briefing={briefing}
-              selectedDateISO={selectedDay.fullDateISO}
+              selectedDateISO={selectedDay!.fullDateISO}
               onSelectDate={pickDate}
             />
 
-            {/* 2행 — 선택한 날의 컨디션. 스트립 바로 다음에 둬서 스크롤 없이 읽히게 합니다 */}
+            {/* 스트립 바로 다음에 둬서 스크롤 없이 읽히게 합니다 */}
             <SpotHeader
               spot={currentSpot}
-              day={selectedDay}
-              currentForecast={activeForecast}
+              day={selectedDay!}
+              currentForecast={activeForecast!}
               highlight={highlight}
               onOpenGuide={() => setIsGuideOpen(true)}
             />
+          </>
+        ) : (
+          <PanelSkeleton heights={[190, 86]} label="예보를 불러오는 중" />
+        )}
 
-            {/* 3행 — 지도 */}
-            <SpotMapView
-              spots={visibleSpots}
-              selectedSpot={currentSpot}
-              onSelectSpot={pickSpot}
-              mapTiles={themeMeta(theme).mapTiles}
-              dailyList={dailyList}
-            />
+        {/* ── 3행: 지도 ────────────────────────────────────────────────────
+            🔑 지도는 **로딩 분기 밖**에 둡니다.
+            예전에는 isLoading 분기가 지도까지 감싸고 있어서, 지도에서 스팟을
+            찍는 순간 지도 자체가 언마운트 → 재마운트됐습니다. 줌·중심이 초기화되고
+            화면이 통째로 깜빡여서 "페이지가 리로드된다"고 느껴졌습니다.
+            지도는 스팟을 고르는 **컨트롤 자체**라 조작 중에 사라지면 안 됩니다. */}
+        <SpotMapView
+          spots={visibleSpots}
+          selectedSpot={currentSpot}
+          onSelectSpot={pickSpot}
+          mapTiles={themeMeta(theme).mapTiles}
+          dailyList={ready ? dailyList : []}
+          isLoading={isLoading}
+        />
 
-            {/* 3행 — 상세는 탭 없이 세로로 이어 붙입니다.
-                탭에 숨기면 한 번에 볼 수 있는 정보량이 줄어듭니다. */}
+        {/* ── 4행: 상세. 탭 없이 세로로 이어 붙입니다 ─────────────────────── */}
+        {ready ? (
+          <>
             <HourlyForecastTable
               forecasts={dayHourly}
-              day={selectedDay}
+              day={selectedDay!}
               spot={currentSpot}
               onSelectTime={setSelectedHourly}
-              selectedTimestamp={activeForecast.timestamp}
+              selectedTimestamp={activeForecast!.timestamp}
             />
 
-            <TideChart forecasts={dayHourly} day={selectedDay} />
+            <TideChart forecasts={dayHourly} day={selectedDay!} />
           </>
+        ) : loadError ? null : (
+          <PanelSkeleton heights={[420, 300]} />
         )}
       </main>
 

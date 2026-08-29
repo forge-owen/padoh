@@ -7,6 +7,98 @@
 ---
 
 
+# [6차] E. 스팟 41 → 62개 · 지도 톤 복원 · 스팟 전환 시 지도 유지
+
+## E.1 🔴 스팟 목록의 출처가 잘못돼 있었습니다
+
+[5차] A 에서 스팟 41개를 넣을 때, **출처가 제 지식이었습니다.** Surfline APK 를
+참고했다고 적었지만 실제로 APK 에서 나온 건 스팟 가이드의 *항목 구조*(Ability
+Level · Bottom · Best Season · Hazards · Crowd)뿐이고 스팟 자체는 아니었습니다.
+
+```
+$ grep -ac "Seorak\|Jukdo\|Mallipo\|Jungmun" classes*.dex   →  0
+$ strings classes*.dex | grep surfline.com                    →  services.surfline.com
+```
+
+**Surfline 의 스팟 DB 는 서버(`services.surfline.com`)에 있고 APK 에는 없습니다.**
+APK 벤치마킹으로는 애초에 스팟 목록을 얻을 수 없습니다. 그 결과 설악해변 같은
+주요 스팟이 통째로 빠졌습니다.
+
+## E.2 🔑 진짜 출처 — 사용자가 만들어 둔 NotebookLM 노트북
+
+사용자가 별도로 조사해 **Gemini 서브에이전트로 저장해 둔 지식**이 있었는데,
+`~/.claude/agents` 만 뒤지느라 놓쳤습니다. 실제 위치:
+
+```
+~/.gemini/config/agents/surf_guide/AGENT.md
+  └─ NotebookLM 노트북 6f3f58fd-4ae7-4a9b-a216-0d29f8c5b8f7
+     "The Essential Guide to Surf Forecast Sites and Tools"
+```
+
+조회는 `nlm` CLI (`~/.local/bin/nlm`, 인증 완료 상태):
+
+```bash
+nlm notebook query 6f3f58fd-4ae7-4a9b-a216-0d29f8c5b8f7 "질문"
+```
+
+여기에 **전국 30여 스팟의 권역·행정구역·바닥·실력대·파도특성 매트릭스**가
+이미 정리돼 있었습니다. 스팟 관련 작업은 앞으로 이 노트북을 1차 출처로 씁니다.
+
+## E.3 추가된 21곳 → 총 62곳
+
+| 권역 | 계 | 추가 |
+|---|---|---|
+| 동해 | 33 | **설악** · 물치 · 정암(리버마우스) · 동호 · 동산 · 지경 · 송지호 · 백도 · 봉수대 · 천진 · 속초 · 대진 · 용화 |
+| 남해 | 8 | 임랑 · **고흥 남열**(전남 유일) |
+| 제주 | 15 | 삼양 · 협재 · 금능 · 월령 · 신양섭지 · 화순금모래 |
+| 서해 | 6 | — |
+
+노트북이 짚은 스팟별 특성을 설명·실력대에 반영했습니다. 예: **설악**은 수심 편차가
+커서 경사면에서 순식간에 말리는 **덤퍼**라 상급, **정암**은 하천이 만든 리버마우스
+A프레임이라 상급.
+
+`npm run verify:spots` — **62곳 전부 통과** (marine API 응답 · 방위 규약 · 근접 중복).
+
+### 넣지 않은 것
+
+- **시흥 웨이브파크** — 인공 풀이라 해양 예보가 의미 없습니다.
+- **포항 신항만** — 노트북에 있지만 좌표를 특정할 근거가 부족해 보류했습니다.
+  (지어내면 지도에 엉뚱한 곳이 찍힙니다)
+
+## E.4 지도 톤 복원
+
+OSM 표준 타일을 그대로 쓰니 채도가 높아(초록 산림·분홍 도로) 지도가 혼자 튀고
+마커 판정색이 배경에 묻혔습니다. 예전 CARTO Positron 계열의 옅은 캔버스로 되돌렸습니다.
+
+```css
+.leaflet-tile { filter: saturate(0.32) brightness(1.06) contrast(0.9); }
+:root[data-theme='night-swell'] .leaflet-tile {
+  filter: invert(1) hue-rotate(180deg) saturate(0.42) brightness(0.88) contrast(0.88);
+}
+```
+
+## E.5 🔑 스팟을 바꿔도 지도가 사라지지 않습니다
+
+`App.tsx` 의 `isLoading` 분기가 **지도까지 감싸고 있었습니다.**
+
+```jsx
+{isLoading ? <Skeleton /> : <> ...<SpotMapView />... </>}   // ← 예전
+```
+
+지도에서 스팟을 찍는 순간 지도 자체가 언마운트 → 재마운트돼 줌·중심이 초기화되고
+화면이 통째로 깜빡였습니다. **지도는 스팟을 고르는 컨트롤 자체**라 조작 중에
+사라지면 안 됩니다.
+
+→ `<SpotMapView>` 를 로딩 분기 **밖**으로 빼고, 예보 패널만 스켈레톤으로 바꿉니다.
+스켈레톤 높이를 실제 패널과 맞춰(190/86, 420/300) 지도가 위아래로 튀지 않게 했습니다.
+재요청 중임은 지도 헤더의 배지로만 알립니다.
+
+**검증:** 스팟 칩 클릭 전후로 `.leaflet-container` 가 **동일한 DOM 노드**이고
+`_leaflet_id` 도 같습니다 — 언마운트되지 않습니다.
+
+---
+
+
 # [5차] D. 🔴 배포 경로 정정 — 이 프로젝트는 git push 로 배포되지 않습니다
 
 ## D.1 무엇이 틀려 있었나

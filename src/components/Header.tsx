@@ -73,8 +73,8 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           <div className="flex items-center gap-2 min-w-0">
-            {/* 스팟 셀렉터 — 스팟이 41개라 모바일에서도 노출합니다.
-                (지도 마커만으로 41개를 찍어 고르는 건 현실적이지 않습니다) */}
+            {/* 스팟 셀렉터 — 스팟이 60개가 넘어 모바일에서도 노출합니다.
+                (지도 마커만으로 60개 넘는 스팟을 고르는 건 현실적이지 않습니다) */}
             <div className="flex items-center gap-2 min-w-0">
               <MapPin className="hidden sm:block w-4 h-4 shrink-0" style={{ color: 'var(--brand)' }} aria-hidden />
               <div className="relative min-w-0">

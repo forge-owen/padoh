@@ -481,15 +481,22 @@
 .leaflet-container { background: var(--raised-hi); font-family: inherit; }
 
 /**
- * 다크 테마 지도 — 타일을 CSS 로 반전시킵니다.
+ * 지도 타일 톤 — 예전 CARTO(Positron/Dark Matter) 계열의 옅은 캔버스 톤을 되살립니다.
  *
- * OSM 표준 타일은 라이트 한 종류뿐입니다. 다크용 무료·무키 타일 서비스를 하나 더
- * 붙이는 대신, 라이트 타일을 반전(invert)하고 색상환을 180° 돌려 원래 색을 되살립니다.
- * (바다 파랑이 주황으로 뒤집히는 걸 hue-rotate 가 되돌립니다)
- * 타일 요청이 한 벌로 끝나고, 앱 테마와 지도가 어긋나지 않습니다.
+ * OSM 표준 타일은 그대로 쓰면 채도가 너무 높습니다(초록 산림, 분홍·노랑 도로,
+ * 베이지 지면). 지도가 화면에서 혼자 튀어서, 마커의 판정색이 배경에 묻힙니다.
+ * 지도는 배경이고 주인공은 마커이므로, 채도를 눌러 뒤로 물립니다.
+ *
+ * 밝은 테마: 채도만 크게 낮추고 살짝 밝혀 종이 같은 캔버스로.
+ * 다크 테마: 반전(invert) + 색상환 180° 회전으로 바다 파랑을 되살린 뒤,
+ *            같은 이유로 채도를 눌러 Dark Matter 쪽 톤에 맞춥니다.
  */
+.leaflet-tile {
+  filter: saturate(0.32) brightness(1.06) contrast(0.9);
+}
+
 :root[data-theme='night-swell'] .leaflet-tile {
-  filter: invert(1) hue-rotate(180deg) brightness(0.86) contrast(0.92) saturate(0.7);
+  filter: invert(1) hue-rotate(180deg) saturate(0.42) brightness(0.88) contrast(0.88);
 }
 
 .leaflet-control-zoom a {

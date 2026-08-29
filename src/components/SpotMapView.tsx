@@ -1,6 +1,6 @@
 /**
  * @file src/components/SpotMapView.tsx
- * @description Leaflet + OpenStreetMap 기반 한국 서핑 스팟 지도 (41개 스팟).
+ * @description Leaflet + OpenStreetMap 기반 한국 서핑 스팟 지도 (62개 스팟).
  *
  * 마커가 단순한 핀이 아니라 **오늘 판정을 이미 담고 있습니다.** 지도만 봐도
  * "지금 어디가 좋은지"가 읽히는 게 Map-First 의 요점이라, 선택된 스팟의 오늘
@@ -28,6 +28,8 @@ interface SpotMapViewProps {
   mapTiles: 'light' | 'dark';
   /** 선택 스팟의 일별 예보 — 마커에 오늘 판정색을 싣는 데 씁니다 */
   dailyList: DailyForecast[];
+  /** 예보 재요청 중인지 — 지도는 그대로 두고 배지로만 알립니다 */
+  isLoading?: boolean;
 }
 
 /**
@@ -53,7 +55,7 @@ function shortName(spot: SurfSpot): string {
 /**
  * 이름표를 붙이기 시작하는 줌 레벨.
  *
- * 스팟이 41개가 되면서 전국 뷰(줌 6~7)에서 이름표가 서로 겹쳐 아무것도 못 읽게
+ * 스팟이 60개를 넘어가면서 전국 뷰(줌 6~7)에서 이름표가 서로 겹쳐 아무것도 못 읽게
  * 됐습니다. 그 축척에서는 **점만** 찍고, 확대해서 개수가 줄어들면 이름을 붙입니다.
  * 선택된 스팟만 예외로 항상 이름표를 답니다 — 지금 어디를 보고 있는지는
  * 축척과 무관하게 알아야 하니까요.
@@ -114,6 +116,7 @@ export const SpotMapView: React.FC<SpotMapViewProps> = ({
   onSelectSpot,
   mapTiles,
   dailyList,
+  isLoading = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   /** 현재 줌 — 이름표를 붙일지 말지를 정합니다 (LABEL_ZOOM 주석 참고) */
@@ -271,6 +274,14 @@ export const SpotMapView: React.FC<SpotMapViewProps> = ({
             {zoom < LABEL_ZOOM && spots.length > 8 && ' · 확대하면 이름 표시'}
           </p>
         </div>
+
+        {/* 지도는 그대로 두고 여기서만 로딩을 알립니다 */}
+        {isLoading && (
+          <span className="badge badge-tide shrink-0" aria-live="polite">
+            <span className="live-dot" aria-hidden />
+            예보 불러오는 중
+          </span>
+        )}
       </header>
 
       {/* 스팟 칩 — 스크롤바를 숨겼으므로 더 있다는 신호는 페이드로 */}

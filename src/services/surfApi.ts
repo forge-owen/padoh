@@ -20,7 +20,7 @@ import { representativeWeatherCode } from '../utils/weather';
 export const FORECAST_DAYS = 16;
 
 /**
- * 스팟 목록은 `src/data/koreaSurfSpots.ts` 로 옮겼습니다 (스팟이 41개가 되면서
+ * 스팟 목록은 `src/data/koreaSurfSpots.ts` 로 옮겼습니다 (스팟이 60개를 넘어가면서
  * 이 파일의 수집 로직을 압도했습니다). 기존 import 경로를 깨지 않도록 여기서
  * 그대로 다시 내보냅니다 — 스팟을 추가할 때는 데이터 파일만 고치면 됩니다.
  */

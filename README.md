@@ -1,6 +1,6 @@
 # WWF — Weekend Wave Finder
 
-> 전국 **41개 서핑 스팟**의 **16일 파도 예보**를 "이번 주말 언제 들어가지?" 한 가지 질문에 맞춰
+> 전국 **62개 서핑 스팟**의 **16일 파도 예보**를 "이번 주말 언제 들어가지?" 한 가지 질문에 맞춰
 > 다시 짠 서핑 예보 대시보드.
 
 **🔗 [wwf.forges.work](https://wwf.forges.work)**
@@ -54,9 +54,9 @@ WWF 는 그 세 가지를 정면으로 다룹니다.
 스팟이 바뀌어도 그림의 의미가 고정되므로, 방위를 몰라도 읽힙니다.
 (양양은 서풍이 오프쇼어, 만리포는 동풍이 오프쇼어입니다 — 앱이 스팟별로 알아서 계산합니다.)
 
-### 📍 전국 41개 스팟 — 동해 20 · 남해 6 · 제주 9 · 서해 6
-양양·강릉·포항 같은 주력 권역은 물론, 울산 진하·경주 나정·안면도 꽃지처럼
-"그날 거기만 되는" 스팟까지 넣었습니다. 스팟 목록은
+### 📍 전국 62개 스팟 — 동해 33 · 남해 8 · 제주 15 · 서해 6
+양양·강릉·포항 같은 주력 권역은 물론, 설악·정암(리버마우스)·대진처럼 로컬만 아는
+스팟과 고흥 남열·제주 월령 같은 외곽까지 넣었습니다. 스팟 목록은
 [`src/data/koreaSurfSpots.ts`](src/data/koreaSurfSpots.ts) 한 파일에 모여 있고,
 `npm run verify:spots` 가 좌표·방위를 실측 검증합니다.
 
@@ -126,7 +126,7 @@ npm run dev      # http://localhost:3050
 
 ```bash
 npm run build          # tsc + vite build → dist/
-npm run verify:spots   # 41개 스팟 좌표·방위 실측 검증 (Open-Meteo 호출)
+npm run verify:spots   # 62개 스팟 좌표·방위 실측 검증 (Open-Meteo 호출)
 ```
 
 ---
@@ -136,7 +136,7 @@ npm run verify:spots   # 41개 스팟 좌표·방위 실측 검증 (Open-Meteo �
 ```
 src/
 ├─ data/
-│  └─ koreaSurfSpots.ts     41개 스팟 레지스트리 (스팟 추가는 여기만)
+│  └─ koreaSurfSpots.ts     62개 스팟 레지스트리 (스팟 추가는 여기만)
 ├─ components/
 │  ├─ ForecastStrip.tsx      16일 스트립 (메인 컨트롤)
 │  ├─ SpotHeader.tsx         지역 컨디션 바 (2행)
