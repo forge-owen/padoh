@@ -7,6 +7,69 @@
 ---
 
 
+# [5차] D. 🔴 배포 경로 정정 — 이 프로젝트는 git push 로 배포되지 않습니다
+
+## D.1 무엇이 틀려 있었나
+
+[4차] U 와 전역 규칙은 "git push 하면 Cloudflare 가 자동 빌드" 를 전제로 쓰였습니다.
+**이 프로젝트에는 해당되지 않습니다.**
+
+```
+$ npx wrangler pages project list
+│ ypod   │ ypod.pages.dev, ypod.forges.work   │ Yes │   ← git 연동됨
+│ padoh  │ padoh.pages.dev, wwf.forges.work   │ No  │   ← 연동 안 됨
+```
+
+`padoh` 은 GitHub 연동이 없습니다. 지금까지의 배포는 전부 **직접 업로드**였습니다.
+push 후 6분을 기다려도 반영이 안 돼서 찾았습니다.
+
+## D.2 실제 배포 방법
+
+```bash
+npm run build
+npx wrangler pages deploy dist --project-name padoh --branch main --commit-dirty=true
+```
+
+업로드 후 **약 10초**면 canonical URL 에 반영됩니다.
+(전역 규칙의 "로컬 deploy 를 쓰지 말 것" 은 Vercel 얘기입니다. Cloudflare 는 잘 됩니다.)
+
+## D.3 ⚠️ wrangler 출력을 믿지 마세요
+
+`wrangler pages deployment list` 의 **Source 컬럼이 커밋을 잘못 표기합니다.**
+"0e0b8d5" 로 찍힌 배포본이 실제로는 그 이후 커밋(`f5d98fa`)의 WWF 브랜딩을
+서빙하고 있었습니다. 직접 업로드 시점의 로컬 git 컨텍스트를 찍는 것으로 보입니다.
+
+**검증은 언제나 canonical URL 의 실제 내용으로 합니다** — 빌드 자산 해시를
+`dist/index.html` 과 대조하는 게 가장 확실합니다.
+
+## D.4 커밋 작성자 이메일 (GH007)
+
+전역 `~/.gitconfig` 은 `owennjerry@gmail.com` 인데, GitHub 계정 `forge-owen` 은
+"Block command line pushes that expose my email" 이 켜져 있어서 등록된 실제 메일
+(`obvs.work@gmail.com`)로도 `GH007` 로 거부됩니다. 레포 로컬로 아래를 잡아 뒀습니다.
+
+```
+user.email = 295408396+forge-owen@users.noreply.github.com
+```
+
+전역 설정은 건드리지 않았습니다. GitHub 설정에서 보호를 끄면 실제 메일로 되돌릴 수 있습니다.
+
+## D.5 배포 확인 (2026-08-30)
+
+| 항목 | 결과 |
+|---|---|
+| `wwf.forges.work` · `padoh.pages.dev` | ✅ HTTP 200 |
+| 라이브 자산 해시 | `index-BxR22zP4.css` / `index-CClTrYt6.js` — 로컬 빌드와 일치 |
+| 스팟 셀렉터 · 지도 마커 | ✅ 41개 / 41개 |
+| 권역 탭 | 전국 41 · 동해 20 · 남해 6 · 제주 9 · 서해 6 |
+| 지도 타일 | `tile.openstreetmap.org` (워터마크 없음) |
+| 문서 가로 스크롤 | ✅ 없음 |
+
+> [4차] U.3 의 CNAME 미해결 항목은 그사이 해결돼 있었습니다 — `wwf.forges.work` 정상 응답.
+
+---
+
+
 # [5차] A. 스팟 16 → 41개 · 스팟 가이드 · 모바일 가로축 고정 (2026-08-30)
 
 > ⚠️ **병렬 작업 주의** — 이 라운드는 `src/index.css` · `src/components/*` 를 광범위하게
