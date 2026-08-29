@@ -37,7 +37,19 @@ export async function fetchLive16DaysForecasts(spotId: string): Promise<{
   try {
     // sea_level_height_msl = 평균해수면 대비 조위(m). 물때 차트/표의 실제 데이터 소스입니다.
     // (이전에는 tideHeightCm 이 45 로 하드코딩되어 조석 차트가 직선으로 그려졌습니다)
-    const marineUrl = `https://marine-api.open-meteo.com/v1/marine?latitude=${spot.latitude}&longitude=${spot.longitude}&hourly=wave_height,wave_period,swell_wave_direction,sea_level_height_msl,wind_wave_height,wind_wave_direction&forecast_days=16&timezone=Asia%2FSeoul`;
+    // 🔴 모델을 두 개 요청하는 이유 — 기본 모델은 9일에서 끊깁니다.
+    //
+    // best_match 는 약 9일까지만 값을 주고 그 뒤로는 전부 null 입니다. 예전에는
+    // 그 null 을 `?? 0` 으로 삼켜서 **10~16일차를 "파고 0.0m" 인 멀쩡한 예보처럼**
+    // 그리고 있었습니다(실제로는 데이터가 없는 것). ncep_gfswave025 는 16일까지
+    // 파고·주기·스웰방향을 주므로, best_match 가 끊긴 뒤를 이어 붙입니다.
+    //
+    // ⚠️ 조위(sea_level_height_msl)는 **어떤 모델에서도 9일이 한계**입니다.
+    //    그 뒤는 데이터가 없다고 정직하게 표시합니다(가짜 0 을 그리지 않습니다).
+    const marineUrl =
+      `https://marine-api.open-meteo.com/v1/marine?latitude=${spot.latitude}&longitude=${spot.longitude}` +
+      `&hourly=wave_height,wave_period,swell_wave_direction,sea_level_height_msl,wind_wave_height,wind_wave_direction` +
+      `&forecast_days=16&timezone=Asia%2FSeoul&models=best_match,ncep_gfswave025`;
     const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${spot.latitude}&longitude=${spot.longitude}&hourly=wind_speed_10m,wind_direction_10m,weather_code,temperature_2m,precipitation_probability&forecast_days=16&timezone=Asia%2FSeoul`;
 
     const [marineRes, weatherRes] = await Promise.all([
@@ -51,12 +63,29 @@ export async function fetchLive16DaysForecasts(spotId: string): Promise<{
     const weatherData = await weatherRes.json();
 
     const times: string[] = marineData.hourly.time;
-    const waveHeights: number[] = marineData.hourly.wave_height;
-    const wavePeriods: number[] = marineData.hourly.wave_period;
-    const swellDirs: number[] = marineData.hourly.swell_wave_direction;
-    const seaLevels: number[] = marineData.hourly.sea_level_height_msl ?? [];
-    const windWaveHeights: number[] = marineData.hourly.wind_wave_height ?? [];
-    const windWaveDirs: number[] = marineData.hourly.wind_wave_direction ?? [];
+    /**
+     * 모델을 여러 개 요청하면 필드 이름에 접미사가 붙습니다
+     * (`wave_height_marine_best_match`, `wave_height_ncep_gfswave025`).
+     * 앞 모델을 우선하고, null 인 구간만 뒤 모델로 메웁니다.
+     */
+    const mergeModels = (base: string): (number | null)[] => {
+      const primary: (number | null)[] = marineData.hourly[`${base}_marine_best_match`] ?? [];
+      const backup: (number | null)[] = marineData.hourly[`${base}_ncep_gfswave025`] ?? [];
+      const len = Math.max(primary.length, backup.length, times.length);
+      const out: (number | null)[] = [];
+      for (let i = 0; i < len; i++) out.push(primary[i] ?? backup[i] ?? null);
+      return out;
+    };
+
+    const waveHeights = mergeModels('wave_height');
+    const wavePeriods = mergeModels('wave_period');
+    const swellDirs = mergeModels('swell_wave_direction');
+    // 조위는 best_match 에만 있습니다 (gfswave 는 전부 null)
+    const seaLevelsRaw: (number | null)[] =
+      marineData.hourly.sea_level_height_msl_marine_best_match ?? [];
+    const seaLevels: number[] = seaLevelsRaw.map((v) => v ?? 0);
+    const windWaveHeights = mergeModels('wind_wave_height');
+    const windWaveDirs = mergeModels('wind_wave_direction');
     const windSpeeds: number[] = weatherData.hourly.wind_speed_10m;
     const windDirs: number[] = weatherData.hourly.wind_direction_10m;
     const weatherCodes: number[] = weatherData.hourly.weather_code ?? [];
@@ -93,7 +122,8 @@ export async function fetchLive16DaysForecasts(spotId: string): Promise<{
         }
       }
 
-      // 조위: m → cm
+      // 조위: m → cm. 데이터가 없는 구간(약 9일 이후)은 0 으로 채우되 플래그로 구분합니다.
+      const tideAvailable = seaLevelsRaw[i] !== null && seaLevelsRaw[i] !== undefined;
       const tideHeightCm = Math.round((seaLevels[i] ?? 0) * 100);
       const tideState = classifyTide(seaLevels, i);
 
@@ -119,6 +149,7 @@ export async function fetchLive16DaysForecasts(spotId: string): Promise<{
         windType,
         tideHeightCm,
         tideState,
+        tideAvailable,
         surfScore: evaluation.score,
         rating: evaluation.rating,
         starType: evaluation.starType,
@@ -246,9 +277,22 @@ function summarizeDay(dateISO: string, items: HourlyForecast[]): DailyForecast {
   const daylight = items.filter(isSurfableHour);
   const weatherPool = daylight.length > 0 ? daylight : items;
 
+  /**
+   * 예보 신뢰도 — 오늘로부터 며칠 뒤인가로 정합니다.
+   * 파도 모델은 D+7 을 넘어가면 매일 뒤집힙니다. "16일 예보"를 앞뒤 구분 없이
+   * 같은 톤으로 보여 주면 사용자가 2주 뒤 계획을 그대로 믿게 됩니다.
+   */
+  const daysAhead = Math.round(
+    (new Date(dateISO + 'T00:00:00').getTime() - new Date(todayISO() + 'T00:00:00').getTime()) / 86400000
+  );
+  const confidence: DailyForecast['confidence'] =
+    daysAhead <= 2 ? 'HIGH' : daysAhead <= 6 ? 'MEDIUM' : 'LOW';
+
   return {
     dateStr: `${dObj.getMonth() + 1}/${dObj.getDate()}`,
     fullDateISO: dateISO,
+    hasTide: items.some((it) => it.tideAvailable),
+    confidence,
     dayOfWeek: dayOfWeekStr,
     isWeekend: dObj.getDay() === 0 || dObj.getDay() === 6,
     isToday: dateISO === todayISO(),
@@ -415,6 +459,7 @@ function generateFallback16Days(spot: SurfSpot) {
       windType,
       tideHeightCm: Math.round(tideSeries[h] * 100),
       tideState: classifyTide(tideSeries, h),
+      tideAvailable: true, // 폴백은 조위 곡선을 스스로 만들므로 항상 값이 있습니다
       surfScore: evaluation.score,
       rating: evaluation.rating,
       starType: evaluation.starType,
@@ -470,13 +515,12 @@ export const PART_OPTIONS: { key: PartKey; label: string; from: number; to: numb
 ];
 
 /**
- * 랭킹용 수집 일수.
+ * 랭킹용 수집 일수 — 예보 최대치와 같은 16일.
  *
- * 16일 전부를 8개 스팟에 대해 받으면 응답이 수 MB 가 돼 모바일에서 부담입니다.
- * 이 기능이 답하는 질문은 "이번 주말 어디로" 라서 7일이면 어떤 요일을 골라도
- * 다음 주말이 항상 들어옵니다.
+ * (처음엔 페이로드가 수 MB 일 거라 보고 7일로 잡았는데, 실측하니 8스팟 16일이
+ *  marine 178KB + weather 86KB 로 충분히 가볍습니다.)
  */
-export const NEARBY_DAYS = 7;
+export const NEARBY_DAYS = 16;
 
 export interface NearbyHour {
   timestamp: number;
@@ -572,9 +616,12 @@ export async function fetchNearbySeries(
   const lats = picked.map((p) => p.s.latitude).join(',');
   const lons = picked.map((p) => p.s.longitude).join(',');
 
+  // best_match 는 9일에서 끊기므로 ncep_gfswave025 로 16일까지 이어 붙입니다
+  // (자세한 이유는 fetchLive16DaysForecasts 의 marineUrl 주석 참고)
   const marineUrl =
     `https://marine-api.open-meteo.com/v1/marine?latitude=${lats}&longitude=${lons}` +
-    `&hourly=wave_height,wave_period,swell_wave_direction,sea_level_height_msl&forecast_days=${NEARBY_DAYS}&timezone=Asia%2FSeoul`;
+    `&hourly=wave_height,wave_period,swell_wave_direction,sea_level_height_msl` +
+    `&forecast_days=${NEARBY_DAYS}&timezone=Asia%2FSeoul&models=best_match,ncep_gfswave025`;
   const weatherUrl =
     `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
     `&hourly=wind_speed_10m,wind_direction_10m&forecast_days=${NEARBY_DAYS}&timezone=Asia%2FSeoul`;
@@ -596,10 +643,17 @@ export async function fetchNearbySeries(
     if (!m?.hourly?.time || !w?.hourly?.time) return;
 
     const times: string[] = m.hourly.time;
-    const heights: number[] = m.hourly.wave_height ?? [];
-    const periods: number[] = m.hourly.wave_period ?? [];
-    const swellDirs: number[] = m.hourly.swell_wave_direction ?? [];
-    const seaLevels: number[] = m.hourly.sea_level_height_msl ?? [];
+    const merge = (base: string): (number | null)[] => {
+      const primary: (number | null)[] = m.hourly[`${base}_marine_best_match`] ?? [];
+      const backup: (number | null)[] = m.hourly[`${base}_ncep_gfswave025`] ?? [];
+      return times.map((_: string, i: number) => primary[i] ?? backup[i] ?? null);
+    };
+    const heights = merge('wave_height');
+    const periods = merge('wave_period');
+    const swellDirs = merge('swell_wave_direction');
+    const seaLevels: number[] = (m.hourly.sea_level_height_msl_marine_best_match ?? []).map(
+      (v: number | null) => v ?? 0
+    );
     const windSpeeds: number[] = w.hourly.wind_speed_10m ?? [];
     const windDirs: number[] = w.hourly.wind_direction_10m ?? [];
 
@@ -611,9 +665,11 @@ export async function fetchNearbySeries(
       // 밤에는 바람이 잦아들어 글래시가 되므로 점수가 높게 나옵니다.
       // 물리적으로는 맞지만 서핑 예보로는 쓸모가 없어 낮 시간대만 담습니다.
       if (hour < SURFABLE_HOURS.from || hour > SURFABLE_HOURS.to) continue;
+      // 파고가 없는 시각은 담지 않습니다. 0 으로 채우면 '플랫'인 척하게 됩니다.
+      if (heights[i] === null || heights[i] === undefined) continue;
 
-      const waveH = Math.round((heights[i] ?? 0) * 10) / 10;
-      const periodS = Math.round(periods[i] ?? 0);
+      const waveH = Math.round((heights[i] as number) * 10) / 10;
+      const periodS = Math.round((periods[i] as number) ?? 0);
       const windKmh = Math.round(windSpeeds[i] ?? 0);
       const windDeg = Math.round(windDirs[i] ?? spot.optimalWindDeg);
       const windType = calculateWindType(windDeg, windKmh, spot.optimalWindDeg);

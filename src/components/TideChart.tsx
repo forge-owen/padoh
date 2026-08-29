@@ -12,7 +12,7 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import { HourlyForecast, DailyForecast } from '../types/surf';
-import { Droplets, ArrowUp, ArrowDown } from 'lucide-react';
+import { Droplets, ArrowUp, ArrowDown, CalendarOff } from 'lucide-react';
 
 interface TideChartProps {
   /** 이미 선택된 날짜로 걸러진 시간별 예보 */
@@ -36,6 +36,13 @@ export const TideChart: React.FC<TideChartProps> = ({ forecasts, day }) => {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
   const displayed = useMemo(() => forecasts.slice(0, 24), [forecasts]);
+
+  /**
+   * 조위 예보가 없는 날 — Open-Meteo 는 조위를 약 9일까지만 줍니다.
+   * 예전에는 없는 값을 0 으로 채워 **평평한 직선을 "조위 0cm"** 로 그렸습니다.
+   * 사용자에게는 "종일 간조"처럼 보여서, 없는 것보다 나쁜 정보였습니다.
+   */
+  const hasTide = day.hasTide && displayed.some((f) => f.tideAvailable);
 
   const geom = useMemo(() => {
     if (displayed.length < 2) return null;
@@ -98,6 +105,34 @@ export const TideChart: React.FC<TideChartProps> = ({ forecasts, day }) => {
 
     return { pts, d, area, min, max, rawMin, rawMax, extremes, plotW, baseline, y };
   }, [displayed]);
+
+  if (!hasTide) {
+    return (
+      <section className="panel p-6 space-y-3 animate-riseIn">
+        <h3 className="flex items-center gap-2">
+          <Droplets className="w-4 h-4 text-tide" />
+          {day.isToday ? '오늘' : `${day.dateStr}(${day.dayOfWeek})`} 물때 (조위)
+        </h3>
+        <div
+          className="flex items-start gap-3 rounded-xl p-4"
+          style={{ background: 'var(--raised)', border: '1px solid var(--line-soft)' }}
+        >
+          <CalendarOff className="w-5 h-5 shrink-0 mt-0.5" style={{ color: 'var(--ink-3)' }} />
+          <div className="space-y-1">
+            <p className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
+              이 날짜는 조위 예보 범위 밖입니다.
+            </p>
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--ink-3)' }}>
+              조위 데이터는 <strong>약 9일치</strong>만 제공됩니다(파고·바람은 16일까지 나옵니다).
+              범위 밖 날짜에 0cm 직선을 그리면 종일 간조처럼 보여서, 아예 표시하지 않습니다.
+              특히 조차가 6~9m인 서해는 <strong>물때가 입수 가능 시간을 정하므로</strong>,
+              날짜가 가까워진 뒤 다시 확인하세요.
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   if (!geom) return null;
 

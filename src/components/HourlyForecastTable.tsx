@@ -257,8 +257,18 @@ export const HourlyForecastTable: React.FC<HourlyForecastTableProps> = ({
               </RowLabel>
               {displayed.map((fc) => (
                 <td key={fc.timestamp} className="py-1.5 px-2" style={{ color: 'var(--ink-3)' }}>
-                  {fc.tideHeightCm}
-                  <span className="text-[10px] ml-0.5">cm</span>
+                  {/* 조위는 약 9일까지만 제공됩니다. 없는 구간에 0cm 를 찍으면
+                      '간조'로 읽히므로 값 대신 줄표를 둡니다(TideChart 와 같은 규칙). */}
+                  {fc.tideAvailable ? (
+                    <>
+                      {fc.tideHeightCm}
+                      <span className="text-[10px] ml-0.5">cm</span>
+                    </>
+                  ) : (
+                    <span title="이 날짜는 조위 예보 범위 밖입니다" style={{ color: 'var(--ink-mark)' }}>
+                      –
+                    </span>
+                  )}
                 </td>
               ))}
             </tr>

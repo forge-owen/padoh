@@ -75,6 +75,20 @@ WWF 는 그 세 가지를 정면으로 다룹니다.
 서해는 조차가 6~9m라 **물때가 사실상 입수 가능 시간을 정합니다.** 동해는 30cm라
 거의 무관합니다 — 같은 "파고 0.8m"도 해변에 따라 의미가 전혀 다릅니다.
 
+### ⏱️ 예보 정확도를 숨기지 않습니다
+16일을 전부 같은 톤으로 보여 주면 사용자가 2주 뒤 계획을 그대로 믿게 됩니다.
+
+| 구간 | 표시 |
+|---|---|
+| D+0~2 | 그대로 |
+| D+3~6 | 그대로 |
+| D+7~ | 카드 테두리가 **점선**, `≈` 표시 — 추세 참고용 |
+
+**조위는 약 9일치만 제공됩니다.** 범위 밖 날짜는 0cm 직선을 그리는 대신
+"조위 예보 범위 밖"이라고 명시합니다 — 0cm 직선은 종일 간조처럼 보여서
+없는 것보다 나쁜 정보입니다. 파고·주기는 두 모델(`best_match` → `ncep_gfswave025`)을
+이어 붙여 16일까지 실제 값을 씁니다.
+
 ### 🗺️ 지도 · 물때 · 시간별 상세
 - OpenStreetMap 기반 인터랙티브 지도에서 스팟 전환 (전국 뷰에서는 점, 확대하면 이름표)
 - Open-Meteo `sea_level_height_msl` 기반 실제 조위 곡선 (만조·간조 극점 직접 라벨)
@@ -110,7 +124,7 @@ E = 4.9 × H² × T        (H: 파고 m, T: 주기 s)
 | Build | Vite 5 |
 | Styling | Tailwind CSS 3 + CSS 변수 `[data-theme]` 토큰 |
 | Map | Leaflet + OpenStreetMap 표준 타일 (다크 테마는 CSS 필터로 반전) |
-| Data | [Open-Meteo](https://open-meteo.com) Marine & Forecast API (16일 / 384시간) |
+| Data | [Open-Meteo](https://open-meteo.com) Marine & Forecast API (16일 / 384시간)<br>파고: `best_match` + `ncep_gfswave025` 병합 · 조위: `best_match` 약 9일 |
 | Hosting | Cloudflare Pages (`wwf.forges.work`) |
 
 **API 키가 필요 없습니다.** Open-Meteo 는 비상업적 이용에 무료이고 키를 요구하지 않습니다.

@@ -74,6 +74,9 @@ const DayCard: React.FC<{
   const verdict = verdictOf(day.maxSurfScore);
   const weather = weatherMeta(day.weatherCode);
   const isFlat = day.maxWaveHeightM < 0.2;
+  // 파도 모델은 D+7 을 넘으면 매일 뒤집힙니다. 앞날과 같은 톤으로 보여 주면
+  // 사용자가 2주 뒤 계획을 그대로 믿게 됩니다.
+  const isLowConfidence = day.confidence === 'LOW';
 
   return (
     <button
@@ -82,10 +85,16 @@ const DayCard: React.FC<{
       className="relative shrink-0 w-[104px] rounded-xl px-2 pt-2 pb-1.5 text-left flex flex-col gap-1 transition-all duration-150 snap-start"
       style={{
         background: isSelected ? 'var(--surface)' : 'transparent',
-        border: `1px solid ${isSelected ? 'var(--brand)' : 'transparent'}`,
+        // 신뢰도가 낮은 날(D+7~)은 테두리를 점선으로. 색을 바꾸면 판정색과 충돌합니다.
+        border: isSelected
+          ? '1px solid var(--brand)'
+          : isLowConfidence
+            ? '1px dashed var(--line)'
+            : '1px solid transparent',
         boxShadow: isSelected ? 'var(--shadow-lift)' : undefined,
       }}
-      aria-label={`${day.isToday ? '오늘' : day.dayOfWeek + '요일'} ${day.dateStr} — ${verdict.label} ${day.maxSurfScore}점, 파고 ${day.minWaveHeightM.toFixed(1)}~${day.maxWaveHeightM.toFixed(1)}미터, ${weather.label}, ${day.minTempC}~${day.maxTempC}도`}
+      aria-label={`${day.isToday ? '오늘' : day.dayOfWeek + '요일'} ${day.dateStr} — ${verdict.label} ${day.maxSurfScore}점, 파고 ${day.minWaveHeightM.toFixed(1)}~${day.maxWaveHeightM.toFixed(1)}미터, ${weather.label}, ${day.minTempC}~${day.maxTempC}도${isLowConfidence ? ', 장기 예보라 정확도가 낮습니다' : ''}${day.hasTide ? '' : ', 조위 예보 없음'}`}
+      title={isLowConfidence ? '장기 예보 — 추세 참고용. 날짜가 가까워지면 크게 바뀝니다.' : undefined}
     >
       {isBest && (
         <span
@@ -147,9 +156,11 @@ const DayCard: React.FC<{
         <span>
           {day.minTempC}°/{day.maxTempC}°
         </span>
-        {day.maxPrecipProbability >= 20 && (
+        {day.maxPrecipProbability >= 20 ? (
           <span style={{ color: 'var(--tide)' }}>{day.maxPrecipProbability}%</span>
-        )}
+        ) : isLowConfidence ? (
+          <span title="장기 예보 — 추세 참고용">≈</span>
+        ) : null}
       </div>
 
       {/* 4행: 아침 / 낮 / 오후 */}
@@ -218,6 +229,15 @@ export const ForecastStrip: React.FC<ForecastStripProps> = ({
           </span>
           <span className="w-px h-4" style={{ background: 'var(--line)' }} aria-hidden />
           <WindDialLegend compact />
+          <span className="w-px h-4" style={{ background: 'var(--line)' }} aria-hidden />
+          <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: 'var(--ink-3)' }}>
+            <span
+              className="inline-block w-3 h-3 rounded"
+              style={{ border: '1px dashed var(--line)' }}
+              aria-hidden
+            />
+            D+7~ 추세 참고용
+          </span>
         </span>
       </div>
 

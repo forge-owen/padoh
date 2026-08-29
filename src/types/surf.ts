@@ -78,6 +78,12 @@ export interface HourlyForecast {
   windType: WindType;
   tideHeightCm: number;
   tideState: 'HIGH' | 'LOW' | 'RISING' | 'FALLING';
+  /**
+   * 이 시각의 조위 예보가 실제로 존재하는가.
+   * Open-Meteo 는 조위를 약 9일까지만 줍니다. 그 뒤는 false 이고 tideHeightCm 은
+   * 의미가 없습니다 — 0 을 그리면 "간조"처럼 보여 사용자를 오해시킵니다.
+   */
+  tideAvailable: boolean;
   surfScore: number;
   rating: SurfRating;
   starType: StarType;
@@ -135,6 +141,16 @@ export interface DailyForecast {
   starType: StarType;
   starCount: number;
   recommendation: string;
+
+  /** 이 날짜에 조위 예보가 있는가 (약 9일까지) */
+  hasTide: boolean;
+  /**
+   * 예보 신뢰도. 파도 모델은 멀어질수록 급격히 맞지 않습니다.
+   *   HIGH   D+0~2  — 실질적으로 믿을 만함
+   *   MEDIUM D+3~6  — 추세는 맞고 수치는 흔들림
+   *   LOW    D+7~   — 방향성 참고용. 매일 뒤집힙니다
+   */
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
 }
 
 export interface DailyHighlight {
