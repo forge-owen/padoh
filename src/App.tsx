@@ -155,7 +155,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-dvh-safe flex flex-col">
       <Header
         selectedSpotId={selectedSpotId}
         onSelectSpot={pickSpot}
@@ -237,7 +237,7 @@ export const App: React.FC = () => {
             </span>
             <span>Weekend Wave Finder</span>
             <span style={{ color: 'var(--ink-mark)' }}>·</span>
-            <span>예보 Open-Meteo · 지도 OpenStreetMap &amp; CARTO</span>
+            <span>예보 Open-Meteo · 지도 OpenStreetMap</span>
           </div>
 
           <div className="inline-flex items-center gap-3 flex-wrap justify-center">

@@ -1,16 +1,16 @@
 /**
  * @file src/components/SpotMapView.tsx
- * @description Leaflet + OpenStreetMap(CARTO) 기반 한국 서핑 스팟 지도.
+ * @description Leaflet + OpenStreetMap 기반 한국 서핑 스팟 지도 (41개 스팟).
  *
  * 마커가 단순한 핀이 아니라 **오늘 판정을 이미 담고 있습니다.** 지도만 봐도
  * "지금 어디가 좋은지"가 읽히는 게 Map-First 의 요점이라, 선택된 스팟의 오늘
  * 판정색 점을 마커 안에 넣었습니다.
  *
- * 타일셋은 테마를 따라갑니다(밝은 테마 → light_all, 다크 → dark_all).
- * 앱은 밝은데 지도만 어둡거나 그 반대면 화면이 두 동강 납니다.
+ * 앱은 밝은데 지도만 어둡거나 그 반대면 화면이 두 동강 나므로, 다크 테마에서는
+ * 타일을 CSS 필터로 반전시켜 지도도 같이 어두워지게 합니다(index.css).
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Navigation, Layers } from 'lucide-react';
 import { SurfSpot, DailyForecast } from '../types/surf';
 import { verdictOf } from '../utils/scoreVisuals';
@@ -30,10 +30,19 @@ interface SpotMapViewProps {
   dailyList: DailyForecast[];
 }
 
-const TILE_URL: Record<'light' | 'dark', string> = {
-  light: 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-  dark: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-};
+/**
+ * 타일 소스 — OpenStreetMap 표준 타일.
+ *
+ * ⚠️ 예전에는 CARTO(`basemaps.cartocdn.com/light_all|dark_all`)를 썼는데, CARTO 가
+ * 키 없는 요청에 **"API KEY REQUIRED" 워터마크를 찍어 내보내도록** 정책을 바꿨습니다.
+ * 타일 응답은 200 이라 에러 로그에는 안 잡히고, 지도 위에만 글자가 깔립니다.
+ * README 가 내건 "API 키가 필요 없습니다" 를 유지하려고 OSM 표준 타일로 옮겼습니다.
+ *
+ * OSM 표준은 라이트 한 종류뿐이라, 다크 테마는 타일을 새로 받지 않고 CSS 필터로
+ * 반전시킵니다(index.css 의 `[data-theme='night-swell'] .leaflet-tile` 참고).
+ * 타일을 두 벌 받지 않으니 요청량도 절반입니다.
+ */
+const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 /** 스팟 이름에서 지역 접두어를 뺀 짧은 이름 ("양양 죽도해변" → "죽도해변") */
 function shortName(spot: SurfSpot): string {
@@ -41,8 +50,44 @@ function shortName(spot: SurfSpot): string {
   return parts.length > 1 ? parts.slice(1).join(' ') : spot.name;
 }
 
+/**
+ * 이름표를 붙이기 시작하는 줌 레벨.
+ *
+ * 스팟이 41개가 되면서 전국 뷰(줌 6~7)에서 이름표가 서로 겹쳐 아무것도 못 읽게
+ * 됐습니다. 그 축척에서는 **점만** 찍고, 확대해서 개수가 줄어들면 이름을 붙입니다.
+ * 선택된 스팟만 예외로 항상 이름표를 답니다 — 지금 어디를 보고 있는지는
+ * 축척과 무관하게 알아야 하니까요.
+ */
+const LABEL_ZOOM = 8.5;
+
 /** CSS 변수는 Leaflet 이 만드는 DOM 안에서도 상속되므로 그대로 씁니다 */
-function markerHtml(spot: SurfSpot, isSelected: boolean, dotColor: string): string {
+function markerHtml(
+  spot: SurfSpot,
+  isSelected: boolean,
+  dotColor: string,
+  withLabel: boolean
+): string {
+  const dot = `
+      <span style="
+        width:7px; height:7px; border-radius:999px; flex:none;
+        background:${dotColor};
+        box-shadow:0 0 0 2px ${isSelected ? 'var(--brand)' : 'var(--surface)'};
+      "></span>`;
+
+  // 점 모드 — 이름표 없이 작은 원. 탭 영역은 눈에 보이는 점보다 넉넉히 잡습니다.
+  if (!withLabel) {
+    return `
+    <div title="${spot.name}" style="
+      position:absolute; left:0; top:0; transform:translate(-50%,-50%);
+      display:flex; align-items:center; justify-content:center;
+      width:22px; height:22px; border-radius:999px; cursor:pointer;
+      background:${isSelected ? 'var(--brand)' : 'var(--surface)'};
+      border:1px solid ${isSelected ? 'var(--brand)' : 'var(--line)'};
+      box-shadow:var(--shadow-card);
+    ">${dot}</div>
+  `;
+  }
+
   return `
     <div style="
       position:absolute; left:0; top:0; transform:translate(-50%,-50%);
@@ -57,11 +102,7 @@ function markerHtml(spot: SurfSpot, isSelected: boolean, dotColor: string): stri
       border:1px solid ${isSelected ? 'var(--brand)' : 'var(--line)'};
       box-shadow:var(--shadow-lift);
     ">
-      <span style="
-        width:7px; height:7px; border-radius:999px; flex:none;
-        background:${dotColor};
-        box-shadow:0 0 0 2px ${isSelected ? 'var(--brand)' : 'var(--surface)'};
-      "></span>
+      ${dot}
       <span>${shortName(spot)}</span>
     </div>
   `;
@@ -75,6 +116,8 @@ export const SpotMapView: React.FC<SpotMapViewProps> = ({
   dailyList,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  /** 현재 줌 — 이름표를 붙일지 말지를 정합니다 (LABEL_ZOOM 주석 참고) */
+  const [zoom, setZoom] = useState<number>(9);
   const mapRef = useRef<any>(null);
   const tileRef = useRef<any>(null);
   const markersRef = useRef<{ [id: string]: any }>({});
@@ -120,6 +163,11 @@ export const SpotMapView: React.FC<SpotMapViewProps> = ({
 
     mapRef.current = map;
 
+    // 줌이 바뀌면 이름표 표시 여부가 달라지므로 상태로 끌어올립니다.
+    const syncZoom = () => setZoom(map.getZoom());
+    map.on('zoomend', syncZoom);
+    syncZoom();
+
     // 초기 카메라는 여기서 확정합니다. 별도 이펙트에 두면 StrictMode 의 이중 실행 때
     // "이미 맞췄다"고 판단해 건너뛰고 생성자 zoom(9) 이 그대로 남습니다.
     const raf = requestAnimationFrame(() => {
@@ -130,6 +178,7 @@ export const SpotMapView: React.FC<SpotMapViewProps> = ({
 
     return () => {
       cancelAnimationFrame(raf);
+      map.off('zoomend', syncZoom);
       map.remove();
       mapRef.current = null;
       tileRef.current = null;
@@ -145,13 +194,15 @@ export const SpotMapView: React.FC<SpotMapViewProps> = ({
 
     if (tileRef.current) map.removeLayer(tileRef.current);
     tileRef.current = window.L
-      .tileLayer(TILE_URL[mapTiles], {
+      .tileLayer(OSM_TILE_URL, {
         maxZoom: 18,
         attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       })
       .addTo(map);
     tileRef.current.setZIndex(0);
+    // 다크 반전은 CSS 가 [data-theme] 로 걸어 줍니다. 여기서는 타일을 갈아끼우지 않지만,
+    // 테마 전환 시 타일 캐시를 새로 그리도록 의존성은 그대로 둡니다.
   }, [mapTiles]);
 
   /* 3. 마커 — 표시 대상(권역 필터)·선택·오늘 판정이 바뀌면 다시 그립니다 */
@@ -171,7 +222,8 @@ export const SpotMapView: React.FC<SpotMapViewProps> = ({
       const marker = window.L.marker([spot.latitude, spot.longitude], {
         icon: window.L.divIcon({
           className: 'k-surf-marker',
-          html: markerHtml(spot, isSelected, dot),
+          // 선택된 스팟은 축척과 무관하게 항상 이름표를 답니다
+          html: markerHtml(spot, isSelected, dot, isSelected || zoom >= LABEL_ZOOM),
           iconSize: [0, 0],
           iconAnchor: [0, 0],
         }),
@@ -184,7 +236,7 @@ export const SpotMapView: React.FC<SpotMapViewProps> = ({
 
       markersRef.current[spot.id] = marker;
     });
-  }, [spots, selectedSpot.id, todayVerdict?.level]);
+  }, [spots, selectedSpot.id, todayVerdict?.level, zoom >= LABEL_ZOOM]);
 
   /* 4. 카메라 — 초기 맞춤 이후의 변화만 */
   useEffect(() => {
@@ -216,13 +268,14 @@ export const SpotMapView: React.FC<SpotMapViewProps> = ({
           >
             <Layers className="w-3 h-3" />
             마커를 눌러 스팟 전환 · 표시 중 {spots.length}곳
+            {zoom < LABEL_ZOOM && spots.length > 8 && ' · 확대하면 이름 표시'}
           </p>
         </div>
       </header>
 
       {/* 스팟 칩 — 스크롤바를 숨겼으므로 더 있다는 신호는 페이드로 */}
       <div
-        className="flex items-center gap-1.5 overflow-x-auto no-scrollbar fade-edge-x px-5 py-2.5"
+        className="flex items-center gap-1.5 scroll-x fade-edge-x px-5 py-2.5"
         style={{ borderBottom: '1px solid var(--line-soft)' }}
       >
         {spots.map((spot) => {
@@ -232,7 +285,7 @@ export const SpotMapView: React.FC<SpotMapViewProps> = ({
               key={spot.id}
               onClick={() => onSelectSpot(spot.id)}
               aria-pressed={active}
-              className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-colors font-medium"
+              className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-colors font-medium tap-safe"
               style={
                 active
                   ? { background: 'var(--brand)', color: 'var(--brand-ink)', fontWeight: 600 }

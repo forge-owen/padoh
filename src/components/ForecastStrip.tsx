@@ -225,7 +225,7 @@ export const ForecastStrip: React.FC<ForecastStripProps> = ({
       <div className="relative">
         <div
           ref={scrollerRef}
-          className="flex items-stretch gap-1 overflow-x-auto no-scrollbar snap-x scroll-pl-1 rounded-xl p-1"
+          className="flex items-stretch gap-1 scroll-x snap-x scroll-pl-1 rounded-xl p-1"
           style={{ background: 'var(--raised)' }}
         >
           {dailyList.map((day) => (

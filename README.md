@@ -1,6 +1,6 @@
 # WWF — Weekend Wave Finder
 
-> 대한민국 7대 서핑 스팟의 **16일 파도 예보**를 "이번 주말 언제 들어가지?" 한 가지 질문에 맞춰
+> 전국 **41개 서핑 스팟**의 **16일 파도 예보**를 "이번 주말 언제 들어가지?" 한 가지 질문에 맞춰
 > 다시 짠 서핑 예보 대시보드.
 
 **🔗 [wwf.forges.work](https://wwf.forges.work)**
@@ -54,8 +54,29 @@ WWF 는 그 세 가지를 정면으로 다룹니다.
 스팟이 바뀌어도 그림의 의미가 고정되므로, 방위를 몰라도 읽힙니다.
 (양양은 서풍이 오프쇼어, 만리포는 동풍이 오프쇼어입니다 — 앱이 스팟별로 알아서 계산합니다.)
 
+### 📍 전국 41개 스팟 — 동해 20 · 남해 6 · 제주 9 · 서해 6
+양양·강릉·포항 같은 주력 권역은 물론, 울산 진하·경주 나정·안면도 꽃지처럼
+"그날 거기만 되는" 스팟까지 넣었습니다. 스팟 목록은
+[`src/data/koreaSurfSpots.ts`](src/data/koreaSurfSpots.ts) 한 파일에 모여 있고,
+`npm run verify:spots` 가 좌표·방위를 실측 검증합니다.
+
+### 🧾 스팟 가이드 — 예보 수치로는 알 수 없는 것
+파고와 바람은 "오늘 파도가 어떤가"만 답합니다. 스팟마다 다음을 함께 답니다.
+
+| 축 | 예 |
+|---|---|
+| 실력대 | 입문 가능 / 중급 이상 / 상급자 |
+| 바닥 | 모래 · 리프 · 포인트 |
+| 시즌 | 가을·겨울 / 여름·가을 / 겨울·봄 |
+| 물때 | 물때 무관 / 중조 / 만조 전후 |
+| 붐빔 | 한산 / 보통 / 붐빔 |
+| 위험 요소 | 얕은 리프·성게 / 방파제 테트라포드 / 조차 큼 … |
+
+서해는 조차가 6~9m라 **물때가 사실상 입수 가능 시간을 정합니다.** 동해는 30cm라
+거의 무관합니다 — 같은 "파고 0.8m"도 해변에 따라 의미가 전혀 다릅니다.
+
 ### 🗺️ 지도 · 물때 · 시간별 상세
-- OpenStreetMap 기반 인터랙티브 지도에서 스팟 전환
+- OpenStreetMap 기반 인터랙티브 지도에서 스팟 전환 (전국 뷰에서는 점, 확대하면 이름표)
 - Open-Meteo `sea_level_height_msl` 기반 실제 조위 곡선 (만조·간조 극점 직접 라벨)
 - 시간별 날씨·기온·강수확률·파고·주기·에너지·바람·물때·스코어
 
@@ -88,7 +109,7 @@ E = 4.9 × H² × T        (H: 파고 m, T: 주기 s)
 | Frontend | React 18 + TypeScript |
 | Build | Vite 5 |
 | Styling | Tailwind CSS 3 + CSS 변수 `[data-theme]` 토큰 |
-| Map | Leaflet + OpenStreetMap / CARTO 타일 |
+| Map | Leaflet + OpenStreetMap 표준 타일 (다크 테마는 CSS 필터로 반전) |
 | Data | [Open-Meteo](https://open-meteo.com) Marine & Forecast API (16일 / 384시간) |
 | Hosting | Cloudflare Pages (`wwf.forges.work`) |
 
@@ -104,7 +125,8 @@ npm run dev      # http://localhost:3050
 ```
 
 ```bash
-npm run build    # tsc + vite build → dist/
+npm run build          # tsc + vite build → dist/
+npm run verify:spots   # 41개 스팟 좌표·방위 실측 검증 (Open-Meteo 호출)
 ```
 
 ---
@@ -113,6 +135,8 @@ npm run build    # tsc + vite build → dist/
 
 ```
 src/
+├─ data/
+│  └─ koreaSurfSpots.ts     41개 스팟 레지스트리 (스팟 추가는 여기만)
 ├─ components/
 │  ├─ ForecastStrip.tsx      16일 스트립 (메인 컨트롤)
 │  ├─ SpotHeader.tsx         지역 컨디션 바 (2행)
@@ -129,7 +153,10 @@ src/
 │  ├─ weather.ts             WMO 코드 → 한글·아이콘
 │  └─ theme.ts               테마 레지스트리
 ├─ types/surf.ts
-└─ index.css                 디자인 토큰 ([data-theme] 3종)
+└─ index.css                 디자인 토큰 ([data-theme] 3종) + 모바일 가로축 하드닝
+
+scripts/
+└─ verify-spots.mjs          스팟 좌표·방위 실측 검증
 ```
 
 개발 히스토리와 설계 근거는 [`DEVLOG.md`](DEVLOG.md) / [`HANDOFF.md`](HANDOFF.md) 참고.
@@ -139,8 +166,7 @@ src/
 ## 데이터 출처 및 라이선스
 
 - 예보: [Open-Meteo](https://open-meteo.com) (CC BY 4.0)
-- 지도: [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL) ·
-  타일 [CARTO](https://carto.com/attributions)
+- 지도: [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL)
 
 > ⚠️ 이 앱의 판정은 수치 모델 기반 참고 자료입니다. 실제 입수 전에는 반드시 현장 상황과
 > 기상 특보를 확인하세요. 이안류·너울 사고는 예보가 좋아 보일 때도 발생합니다.

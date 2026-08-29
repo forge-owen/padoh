@@ -2,7 +2,7 @@
  * @file src/utils/surfScoreEngine.ts
  * @description 한국 해역 특화 서핑 점수(Surf Score) 및 Swell Energy(kJ) 계산 엔진
  * 
- * Surfline의 /kbyg/ 퀄리티 산정 모델과 Surf-forecast.com의 Swell Energy 시스템을 융합하여,
+ * 글로벌 해양 데이터 기반 K-Offshore 퀄리티 산정 모델과 Swell Energy 시스템을 융합하여,
  * 단순 파고가 아닌 [스웰 에너지 + 주기 + K-Offshore 바람 판단 + 물때]를 수학적으로 연산합니다.
  */
 
@@ -81,9 +81,22 @@ export function evaluateSurfScore(
   waveHeightM: number,
   periodS: number,
   windSpeedKmh: number,
-  windType: WindType
+  windType: WindType,
+  swellDeg?: number,
+  optimalSwellDeg?: number,
+  tideState?: 'HIGH' | 'LOW' | 'RISING' | 'FALLING',
+  crossSwellPenalty: number = 0
 ): ScoreEvaluation {
-  const energyKJ = calculateSwellEnergy(waveHeightM, periodS);
+  let energyKJ = calculateSwellEnergy(waveHeightM, periodS);
+
+  // 1. Swell Direction Penalty (스웰 방위 매칭)
+  if (swellDeg !== undefined && optimalSwellDeg !== undefined) {
+    const angleDiff = Math.abs((swellDeg - optimalSwellDeg + 180 + 360) % 360 - 180);
+    // 90도 이상 틀어지면 에너지가 급감하되, 최소 20%는 유지 (반사파 등)
+    // angleDiff가 0일 때 1, 90일 때 0이 되도록 코사인 사용
+    const refractionFactor = Math.max(0.2, Math.cos(angleDiff * (Math.PI / 180)));
+    energyKJ = Math.round(energyKJ * refractionFactor);
+  }
 
   // 파도가 거의 없는 경우 (Flat)
   //
@@ -136,6 +149,20 @@ export function evaluateSurfScore(
     // ONSHORE (해풍): 풍속이 셀수록 점수 급격히 하락
     if (windSpeedKmh > 20) totalScore -= 20;
     else totalScore += 2;
+  }
+
+  // D. 다중 스웰(Cross-swell / Wind chop) 페널티 반영
+  if (crossSwellPenalty > 0) {
+    totalScore -= crossSwellPenalty;
+  }
+
+  // E. 조수 간만의 차 (Tide) 영향
+  // 한국은 썰물(LOW)일 때 물이 너무 빠져서 덤핑(내리꽂는 파도)이 되거나 얕아져서 타기 힘든 경우가 잦음.
+  // 반대로 RISING이나 HIGH일 때 파도가 밀고 들어오는 힘이 붙음.
+  if (tideState === 'LOW') {
+    totalScore -= 5;
+  } else if (tideState === 'RISING') {
+    totalScore += 3;
   }
 
   // 점수 범위 0 ~ 100 제한

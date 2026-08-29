@@ -9,7 +9,7 @@
  * [색 + 아이콘 모양 + 한글 라벨] 세 채널로 함께 나갑니다.
  */
 
-import { WindType } from '../types/surf';
+import { WindType, SkillLevel, SeasonKey, TidePreference, CrowdLevel, SurfSpot } from '../types/surf';
 
 /* ── 1. 3단계 판정 — 이 앱에서 가장 중요한 한 가지 ─────────────────────── */
 
@@ -128,7 +128,7 @@ export function windMeta(windType: WindType): WindMeta {
  *   제주 중문  해변이 남쪽을 봄  → 북풍(20°)이 오프쇼어
  *
  * 그래서 나침반 화살표(N/S/E/W)만 보여주면 "이게 왜 오프쇼어지?"를 알 수 없습니다.
- * Surfline 도 같은 이유로 헷갈립니다.
+ * 일반적인 예보 서비스들이 똑같이 가진 한계입니다.
  *
  * 대신 화면에서는 **해변 단면 다이어그램**을 씁니다(components/WindDial.tsx):
  * 위쪽은 항상 육지(해변), 아래쪽은 항상 바다. 화살표는 바람이 흘러가는 방향.
@@ -184,3 +184,152 @@ export function energyAdvice(kJ: number): string {
   return '아주 약함';
 }
 
+
+/* ── 5. 스팟 가이드 축의 표현 ─────────────────────────────────────────────
+ *
+ * 예보는 "오늘 파도가 어떤가"를 답하지만, 여기 있는 축들은 "그래서 내가 거길
+ * 가도 되는가"를 답합니다. 라벨과 색을 여기 한 곳에 모아 둡니다 — 판정 색과
+ * 같은 규칙을 쓰되, **실력대는 좋고 나쁨이 아니라 종류**라서 초록/빨강으로
+ * 칠하지 않습니다. (상급자 스팟이 '나쁜' 스팟이 아닙니다)
+ * --------------------------------------------------------------------- */
+
+export interface GuideChip {
+  label: string;
+  /** 한 줄 보충 설명 — 툴팁/부연으로 씁니다 */
+  hint: string;
+  colorVar: string;
+  softVar: string;
+}
+
+export function skillMeta(level: SkillLevel): GuideChip {
+  switch (level) {
+    case 'BEGINNER':
+      return {
+        label: '입문 가능',
+        hint: '수심이 완만하고 바닥이 모래라 처음 배우기 좋습니다.',
+        colorVar: 'var(--tide)',
+        softVar: 'var(--tide-soft)',
+      };
+    case 'INTERMEDIATE':
+      return {
+        label: '중급 이상',
+        hint: '패들아웃과 라인업 위치 잡기가 어느 정도 되어야 합니다.',
+        colorVar: 'var(--gold)',
+        softVar: 'var(--gold-soft)',
+      };
+    case 'ADVANCED':
+      return {
+        label: '상급자',
+        hint: '얕은 리프나 강한 파워가 있어 실수 비용이 큽니다.',
+        colorVar: 'var(--rose)',
+        softVar: 'var(--rose-soft)',
+      };
+    case 'ALL':
+    default:
+      return {
+        label: '모든 실력대',
+        hint: '구간에 따라 입문부터 숏보드까지 나눠 탈 수 있습니다.',
+        colorVar: 'var(--ink-2)',
+        softVar: 'var(--raised-hi)',
+      };
+  }
+}
+
+const SEASON_LABEL: Record<SeasonKey, string> = {
+  SPRING: '봄',
+  SUMMER: '여름',
+  AUTUMN: '가을',
+  WINTER: '겨울',
+};
+
+/** 계절 배열을 '가을·겨울' 처럼 한 덩어리로. 4계절이면 '사계절'. */
+export function seasonsLabel(seasons: SeasonKey[]): string {
+  if (seasons.length >= 4) return '사계절';
+  const order: SeasonKey[] = ['SPRING', 'SUMMER', 'AUTUMN', 'WINTER'];
+  return order
+    .filter((s) => seasons.includes(s))
+    .map((s) => SEASON_LABEL[s])
+    .join('·');
+}
+
+export function tideMeta(pref: TidePreference): GuideChip {
+  switch (pref) {
+    case 'HIGH':
+      return {
+        label: '만조 전후',
+        hint: '만조 2~3시간 전후에만 파도가 섭니다. 물때표를 먼저 보세요.',
+        colorVar: 'var(--tide)',
+        softVar: 'var(--tide-soft)',
+      };
+    case 'LOW':
+      return {
+        label: '간조 전후',
+        hint: '물이 빠지면서 샌드바가 드러날 때 면이 가장 잘 섭니다.',
+        colorVar: 'var(--tide)',
+        softVar: 'var(--tide-soft)',
+      };
+    case 'MID':
+      return {
+        label: '중조',
+        hint: '만조와 간조 사이, 물이 움직이는 구간이 가장 좋습니다.',
+        colorVar: 'var(--tide)',
+        softVar: 'var(--tide-soft)',
+      };
+    case 'ANY':
+    default:
+      return {
+        label: '물때 무관',
+        hint: '조차가 작아 물때가 컨디션을 크게 바꾸지 않습니다.',
+        colorVar: 'var(--ink-3)',
+        softVar: 'var(--raised-hi)',
+      };
+  }
+}
+
+export function crowdMeta(level: CrowdLevel): GuideChip {
+  switch (level) {
+    case 'BUSY':
+      return {
+        label: '붐빔',
+        hint: '주말 낮에는 라인업이 꽉 찹니다. 이른 아침을 노리세요.',
+        colorVar: 'var(--poor)',
+        softVar: 'var(--poor-soft)',
+      };
+    case 'MODERATE':
+      return {
+        label: '보통',
+        hint: '주말에 사람이 있지만 자리는 납니다.',
+        colorVar: 'var(--fair)',
+        softVar: 'var(--fair-soft)',
+      };
+    case 'QUIET':
+    default:
+      return {
+        label: '한산',
+        hint: '서퍼가 적습니다. 대신 구조 인력도 없는 경우가 많습니다.',
+        colorVar: 'var(--good)',
+        softVar: 'var(--good-soft)',
+      };
+  }
+}
+
+export const BOTTOM_META: Record<SurfSpot['bottomType'], GuideChip> = {
+  SANDBAR: {
+    label: '모래',
+    hint: '바닥이 모래라 넘어져도 비교적 안전합니다. 대신 샌드바가 계절마다 바뀝니다.',
+    colorVar: 'var(--gold)',
+    softVar: 'var(--gold-soft)',
+  },
+  REEF: {
+    label: '리프',
+    hint: '바닥이 바위입니다. 부츠를 신고 간조 수심을 반드시 확인하세요.',
+    colorVar: 'var(--rose)',
+    softVar: 'var(--rose-soft)',
+  },
+  POINT_BREAK: {
+    label: '포인트',
+    hint: '곶을 따라 한 방향으로 길게 깨집니다. 피크 자리 경쟁이 있습니다.',
+    colorVar: 'var(--tide)',
+    softVar: 'var(--tide-soft)',
+  },
+};

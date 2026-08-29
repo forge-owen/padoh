@@ -62,22 +62,27 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 WWF
               </div>
-              <p className="text-[11px] truncate leading-tight" style={{ color: 'var(--ink-3)' }}>
+              {/* 좁은 화면에서는 셀렉터에 자리를 내주고 부제를 접습니다 */}
+              <p
+                className="text-[11px] truncate leading-tight hidden sm:block"
+                style={{ color: 'var(--ink-3)' }}
+              >
                 Weekend Wave Finder · 한국 서핑 16일 파도 예보
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            {/* 스팟 셀렉터 */}
-            <div className="hidden md:flex items-center gap-2">
-              <MapPin className="w-4 h-4" style={{ color: 'var(--brand)' }} aria-hidden />
-              <div className="relative">
+          <div className="flex items-center gap-2 min-w-0">
+            {/* 스팟 셀렉터 — 스팟이 41개라 모바일에서도 노출합니다.
+                (지도 마커만으로 41개를 찍어 고르는 건 현실적이지 않습니다) */}
+            <div className="flex items-center gap-2 min-w-0">
+              <MapPin className="hidden sm:block w-4 h-4 shrink-0" style={{ color: 'var(--brand)' }} aria-hidden />
+              <div className="relative min-w-0">
                 <select
                   aria-label="서핑 스팟 선택"
                   value={selectedSpotId}
                   onChange={(e) => onSelectSpot(e.target.value)}
-                  className="appearance-none text-sm rounded-xl pl-3.5 pr-9 py-2 cursor-pointer transition-colors"
+                  className="appearance-none w-full max-w-[52vw] sm:max-w-none text-sm rounded-xl pl-3 sm:pl-3.5 pr-9 py-2 cursor-pointer transition-colors truncate"
                   style={{
                     background: 'var(--raised)',
                     color: 'var(--ink)',
@@ -104,7 +109,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* 권역 필터 */}
         <nav
-          className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-2"
+          className="flex items-center gap-1.5 scroll-x py-2"
           style={{ borderTop: '1px solid var(--line-soft)' }}
           aria-label="권역 필터"
         >
@@ -115,7 +120,7 @@ export const Header: React.FC<HeaderProps> = ({
                 key={tab.key}
                 onClick={() => onSelectRegion(tab.key)}
                 aria-pressed={active}
-                className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-colors font-medium"
+                className="px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-colors font-medium tap-safe"
                 style={
                   active
                     ? { background: 'var(--brand)', color: 'var(--brand-ink)', fontWeight: 600 }

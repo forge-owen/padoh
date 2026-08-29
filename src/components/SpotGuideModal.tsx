@@ -6,10 +6,18 @@
  */
 
 import React, { useEffect } from 'react';
-import { X, Wind, Compass, AlertTriangle, Waves } from 'lucide-react';
+import { X, Wind, Compass, AlertTriangle, Waves, Users, CalendarRange, Droplets, GraduationCap } from 'lucide-react';
 import { SurfSpot } from '../types/surf';
 import { getDirectionText } from '../utils/surfScoreEngine';
-import { shoreFacingDeg } from '../utils/scoreVisuals';
+import {
+  shoreFacingDeg,
+  skillMeta,
+  seasonsLabel,
+  tideMeta,
+  crowdMeta,
+  BOTTOM_META,
+  GuideChip,
+} from '../utils/scoreVisuals';
 import { WindDial } from './WindDial';
 
 interface SpotGuideModalProps {
@@ -21,12 +29,44 @@ const SAFETY_NOTE: Record<SurfSpot['region'], string> = {
   EAST:
     '동해안은 너울성 파도가 강할 때 갯바위 근처 립 커런트(이안류)를 주의하세요. 서풍(오프쇼어)이 부는 이른 아침이 가장 깨끗합니다.',
   JEJU:
-    '제주 중문은 수심이 깊어 파워가 강하고 바닥이 리프입니다. 부츠 착용과 라인업 위치 파악을 먼저 하세요.',
+    '제주는 상당수 스팟이 현무암 리프입니다. 부츠를 신고, 간조에 바닥이 얼마나 드러나는지 먼저 확인하세요. 남·북 스팟은 바람 방향이 정반대라 그날 바람에 맞춰 갈아타는 곳입니다.',
   WEST:
     '서해는 조차가 매우 큽니다. 만조 2시간 전후로만 파도가 서므로 물때표를 반드시 먼저 확인하세요.',
   SOUTH:
     '남해는 조석 간만 차가 있고 여름철 인파가 많습니다. 지정된 서핑 구역과 만조 타이밍을 함께 확인하세요.',
 };
+
+/**
+ * 가이드 축 한 칸 — 아이콘 + 라벨 + 한 줄 설명.
+ * 라벨만으로는 "중조가 뭔데?" 가 남아서, 설명을 접지 않고 항상 같이 둡니다.
+ */
+const GuideRow: React.FC<{ icon: React.ReactNode; title: string; chip: GuideChip }> = ({
+  icon,
+  title,
+  chip,
+}) => (
+  <div className="flex items-start gap-2.5">
+    <span className="shrink-0 mt-0.5" style={{ color: chip.colorVar }} aria-hidden>
+      {icon}
+    </span>
+    <span className="min-w-0">
+      <span className="flex items-baseline gap-1.5 flex-wrap">
+        <span className="text-[11px]" style={{ color: 'var(--ink-mark)' }}>
+          {title}
+        </span>
+        <span
+          className="text-xs font-semibold px-1.5 py-0.5 rounded-md"
+          style={{ background: chip.softVar, color: chip.colorVar }}
+        >
+          {chip.label}
+        </span>
+      </span>
+      <p className="text-[11px] leading-snug mt-1" style={{ color: 'var(--ink-3)' }}>
+        {chip.hint}
+      </p>
+    </span>
+  </div>
+);
 
 export const SpotGuideModal: React.FC<SpotGuideModalProps> = ({ spot, onClose }) => {
   useEffect(() => {
@@ -53,7 +93,7 @@ export const SpotGuideModal: React.FC<SpotGuideModalProps> = ({ spot, onClose })
         onClick={(e) => e.stopPropagation()}
         className="panel w-full max-w-lg p-6 space-y-5 animate-riseIn relative"
       >
-        <button onClick={onClose} aria-label="닫기" className="absolute top-4 right-4 btn btn-ghost !p-2">
+        <button onClick={onClose} aria-label="닫기" className="absolute top-4 right-4 btn btn-ghost !p-2 tap-safe">
           <X className="w-4 h-4" />
         </button>
 
@@ -129,9 +169,48 @@ export const SpotGuideModal: React.FC<SpotGuideModalProps> = ({ spot, onClose })
           </p>
         </div>
 
-        <div className="card p-3.5">
-          <h4 className="mb-1.5">스팟 특징</h4>
-          <p className="text-sm text-ink-2 leading-relaxed">{spot.description}</p>
+        <div className="card p-3.5 space-y-3.5">
+          <div>
+            <h4 className="mb-1.5">스팟 특징</h4>
+            <p className="text-sm text-ink-2 leading-relaxed">{spot.description}</p>
+          </div>
+
+          {/* 예보 수치로는 알 수 없는 축들 — 실력대 · 바닥 · 시즌 · 물때 · 붐빔 */}
+          <div
+            className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 pt-3.5"
+            style={{ borderTop: '1px solid var(--line-soft)' }}
+          >
+            <GuideRow
+              icon={<GraduationCap className="w-4 h-4" />}
+              title="실력대"
+              chip={skillMeta(spot.skillLevel)}
+            />
+            <GuideRow
+              icon={<Waves className="w-4 h-4" />}
+              title="바닥"
+              chip={BOTTOM_META[spot.bottomType]}
+            />
+            <GuideRow
+              icon={<CalendarRange className="w-4 h-4" />}
+              title="시즌"
+              chip={{
+                label: seasonsLabel(spot.bestSeasons),
+                hint: '이 계절에 스웰이 가장 자주, 크게 들어옵니다.',
+                colorVar: 'var(--ink-2)',
+                softVar: 'var(--raised-hi)',
+              }}
+            />
+            <GuideRow
+              icon={<Droplets className="w-4 h-4" />}
+              title="물때"
+              chip={tideMeta(spot.tidePreference)}
+            />
+            <GuideRow
+              icon={<Users className="w-4 h-4" />}
+              title="혼잡도"
+              chip={crowdMeta(spot.crowdLevel)}
+            />
+          </div>
         </div>
 
         <div
@@ -145,6 +224,24 @@ export const SpotGuideModal: React.FC<SpotGuideModalProps> = ({ spot, onClose })
             <AlertTriangle className="w-4 h-4" /> 안전 주의사항
           </h4>
           <p className="text-[13px] text-ink-2 leading-relaxed">{SAFETY_NOTE[spot.region]}</p>
+
+          {/* 권역 공통 주의사항 + 이 스팟만의 위험 요소를 나눠서 보여 줍니다 */}
+          {spot.hazards.length > 0 && (
+            <ul className="flex flex-wrap gap-1.5 mt-2.5" aria-label="이 스팟의 위험 요소">
+              {spot.hazards.map((h) => (
+                <li
+                  key={h}
+                  className="text-[11px] px-2 py-0.5 rounded-md"
+                  style={{
+                    background: 'color-mix(in srgb, var(--rose) 14%, transparent)',
+                    color: 'var(--rose)',
+                  }}
+                >
+                  {h}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <button onClick={onClose} className="btn btn-primary w-full py-2.5">

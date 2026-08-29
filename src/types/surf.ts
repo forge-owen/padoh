@@ -11,6 +11,29 @@ export type StarType = 'GOLD' | 'WHITE' | 'ZERO';
 
 export type SurfRating = 'FLAT' | 'VERY_POOR' | 'POOR' | 'FAIR' | 'GOOD' | 'EPIC';
 
+/* ── 스팟 가이드 축 ───────────────────────────────────────────────────────
+ * 예보 수치는 "오늘 파도가 어떤가"만 답합니다. 여기 있는 축들은 그것만으로는
+ * 절대 알 수 없는 "그래서 내가 거길 가도 되는가"를 답합니다.
+ * (Surfline 스팟 가이드의 Ability Level · Best Season · Hazards · Crowd Factor 를
+ *  한국 상황에 맞춰 옮긴 것입니다)
+ * --------------------------------------------------------------------- */
+
+/** 이 스팟을 감당할 수 있는 실력대 */
+export type SkillLevel = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'ALL';
+
+/** 파도가 잘 들어오는 계절 */
+export type SeasonKey = 'SPRING' | 'SUMMER' | 'AUTUMN' | 'WINTER';
+
+/**
+ * 잘 맞는 물때.
+ * 서해는 조차가 6~9m 라 이 값이 사실상 "탈 수 있는 시간대"를 정합니다.
+ * 동해는 조차가 30cm 안팎이라 대부분 ANY 입니다.
+ */
+export type TidePreference = 'LOW' | 'MID' | 'HIGH' | 'ANY';
+
+/** 주말 성수 시간대 기준 붐빔 정도 */
+export type CrowdLevel = 'QUIET' | 'MODERATE' | 'BUSY';
+
 export interface SurfSpot {
   id: string;
   name: string;
@@ -19,10 +42,21 @@ export interface SurfSpot {
   locationName: string;
   latitude: number;
   longitude: number;
+  /** 오프쇼어 방위 — 바람이 **불어오는** 쪽. optimalSwellDeg 의 반대편입니다. */
   optimalWindDeg: number;
+  /** 해변이 바라보는 방위 = 스웰이 **들어오는** 쪽 */
   optimalSwellDeg: number;
   bottomType: 'SANDBAR' | 'REEF' | 'POINT_BREAK';
   description: string;
+
+  /* 스팟 가이드 (SpotGuideModal 에서 표시) */
+  skillLevel: SkillLevel;
+  bestSeasons: SeasonKey[];
+  tidePreference: TidePreference;
+  crowdLevel: CrowdLevel;
+  /** 이 스팟 고유의 위험 요소. 권역 공통 주의사항과 별개입니다. */
+  hazards: string[];
+
   liveCamTitle?: string;
   liveCamUrl?: string;
 }

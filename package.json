@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "verify:spots": "node scripts/verify-spots.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.344.0",

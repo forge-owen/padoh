@@ -17,7 +17,7 @@
 import React from 'react';
 import { MapPin, Info, Video, Clock } from 'lucide-react';
 import { SurfSpot, HourlyForecast, DailyHighlight, DailyForecast } from '../types/surf';
-import { windMeta, energyAdvice, verdictOf, verdictReason } from '../utils/scoreVisuals';
+import { windMeta, energyAdvice, verdictOf, verdictReason, BOTTOM_META } from '../utils/scoreVisuals';
 import { weatherMeta } from '../utils/weather';
 import { WindDial } from './WindDial';
 
@@ -29,12 +29,6 @@ interface SpotHeaderProps {
   highlight: DailyHighlight;
   onOpenGuide: () => void;
 }
-
-const BOTTOM_LABEL: Record<SurfSpot['bottomType'], string> = {
-  SANDBAR: '모래',
-  REEF: '리프',
-  POINT_BREAK: '포인트',
-};
 
 /** 라벨 위 / 값 아래 2단 칩. 2행의 기본 단위입니다. */
 const Metric: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
@@ -87,7 +81,9 @@ export const SpotHeader: React.FC<SpotHeaderProps> = ({
         <span className="text-sm font-bold truncate" style={{ color: 'var(--ink)' }}>
           {spot.name}
         </span>
-        <span className="badge badge-mute">{BOTTOM_LABEL[spot.bottomType]}</span>
+        <span className="badge badge-mute" title={BOTTOM_META[spot.bottomType].hint}>
+          {BOTTOM_META[spot.bottomType].label}
+        </span>
         {isLiveApi ? (
           <span className="badge badge-tide">
             <span className="live-dot" aria-hidden />
@@ -106,7 +102,7 @@ export const SpotHeader: React.FC<SpotHeaderProps> = ({
               href={spot.liveCamUrl}
               target="_blank"
               rel="noreferrer"
-              className="btn btn-ghost !px-2 !py-1.5"
+              className="btn btn-ghost !px-2 !py-1.5 tap-safe"
               aria-label={spot.liveCamTitle || '라인업 라이브 카메라'}
             >
               <Video className="w-3.5 h-3.5" style={{ color: 'var(--rose)' }} />

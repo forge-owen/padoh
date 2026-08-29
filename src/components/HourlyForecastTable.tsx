@@ -76,7 +76,7 @@ export const HourlyForecastTable: React.FC<HourlyForecastTableProps> = ({
       </header>
 
       {/* 스크롤 컨테이너 — 좌우 패딩 금지 (파일 상단 주석 참고) */}
-      <div className="overflow-x-auto no-scrollbar">
+      <div className="scroll-x">
         <table className="w-full min-w-[900px] text-center text-xs border-separate border-spacing-0">
           <caption className="sr-only">
             {day.dateStr} 시간별 서핑 컨디션과 날씨

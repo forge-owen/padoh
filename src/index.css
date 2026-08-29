@@ -174,11 +174,52 @@
 }
 
 @layer base {
+  /* ══════════════════════════════════════════════════════════════════════
+     모바일 웹 가로축 고정 — "좌우가 안 잡히고 밀리는" 현상 차단
+     ----------------------------------------------------------------------
+     증상: 모바일에서 페이지가 좌우로 밀리고, sticky 헤더가 같이 따라 밀려서
+     화면 왼쪽/오른쪽에 빈 띠가 생깁니다.
+
+     원인은 항상 둘 중 하나입니다.
+       (1) 뷰포트보다 넓은 자식이 문서 전체에 가로 스크롤을 만든다
+           (min-w-[900px] 표, 절대배치 요소, 100vw, 긴 URL 등)
+       (2) 가로 스크롤 영역(16일 스트립·시간별 표)에서 스와이프가 끝에 닿는 순간
+           스크롤이 페이지로 전파(scroll chaining)돼 화면 전체가 밀린다
+
+     (1) 은 html/body 를 clip 해서, (2) 는 각 스크롤러의 overscroll-behavior-x 로
+     막습니다. 둘 중 하나만 해서는 증상이 남습니다.
+
+     ⚠️ overflow-x: hidden 이 아니라 clip 이어야 합니다.
+     hidden 은 스크롤 컨테이너(scrollport)를 만들어서 그 안의 position: sticky 를
+     죽입니다 — 이 앱은 헤더가 sticky 라 헤더가 아예 안 붙어 버립니다.
+     clip 은 스크롤 컨테이너를 만들지 않고 넘친 부분만 잘라내므로 sticky 가
+     그대로 삽니다. 지원하지 않는 구형 브라우저에서는 선언이 무시될 뿐
+     레이아웃이 깨지지는 않습니다.
+     ══════════════════════════════════════════════════════════════════════ */
+  html {
+    overflow-x: clip;
+  }
+
   body {
     background-color: var(--bg);
     color: var(--ink-2);
-    @apply min-h-screen font-sans antialiased;
+    @apply font-sans antialiased;
     transition: background-color 240ms ease, color 240ms ease;
+
+    /* 100vh 는 iOS Safari 에서 'URL 바가 펼쳐진 상태' 높이라 실제 보이는 영역보다 큽니다.
+       푸터가 화면 밖으로 잘리고 스크롤할 때 높이가 튑니다. dvh 가 현재 보이는 높이입니다. */
+    min-height: 100vh;
+    min-height: 100dvh;
+
+    /* 줄바꿈 안 되는 긴 URL·해시가 레이아웃을 가로로 밀어내는 것을 막습니다 */
+    overflow-wrap: break-word;
+
+    overflow-x: clip;
+    /* 가로 고무줄 튕김 + 가장자리 스와이프가 '뒤로가기'로 오인되는 것까지 함께 막습니다 */
+    overscroll-behavior-x: none;
+    /* 노치·다이내믹 아일랜드 안전영역 (index.html 의 viewport-fit=cover 와 한 쌍) */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 
   ::selection {
@@ -199,6 +240,56 @@
     outline: 2px solid var(--brand);
     outline-offset: 2px;
     border-radius: 4px;
+  }
+
+  /* 더블탭 확대 대기(약 300ms)를 없앱니다. 버튼이 굼뜨게 느껴지는 원인입니다. */
+  button,
+  a,
+  label,
+  select,
+  summary,
+  [role='button'] {
+    touch-action: manipulation;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   iOS Safari — 입력창을 탭하면 화면이 확대되는 문제
+   --------------------------------------------------------------------------
+   원인은 확대 설정이 아니라 **글자 크기**입니다. iOS Safari 는 포커스된 폼
+   컨트롤의 계산된 font-size 가 16px 미만이면 자동으로 줌인하고, 줌아웃은
+   해 주지 않습니다. 이 앱의 스팟 셀렉터가 text-sm(14px) 이라 정확히 걸렸습니다.
+
+   ⚠️ 왜 `select { font-size: 16px }` 만으로는 **안 먹는가** (한 번 걸렸던 함정)
+   Tailwind v3 의 `@layer base/components/utilities` 는 네이티브 CSS 캐스케이드
+   레이어가 아니라 **빌드 때 사라지는 지시자**입니다. 그래서 레이어 우선순위가
+   아니라 평범한 특이성 싸움이 되고,
+
+       .text-sm  (0,1,0)   >   select  (0,0,1)
+
+   이라 셀렉터가 14px 로 남습니다. 파일 뒤쪽에 써도 소용없습니다 — 소스 순서는
+   특이성이 같을 때만 의미가 있습니다. 그래서 `[class]` 를 붙여
+   (0,1,1) 로 올려 유틸리티를 이깁니다. 클래스가 없는 요소를 위해 맨 선택자도
+   같이 둡니다.
+
+   (pointer: coarse) 로 감싸서 **데스크톱은 14px 그대로 두고 터치 기기에서만**
+   16px 로 올립니다. 디자인을 훼손하지 않고 문제만 없앱니다.
+
+   🚫 user-scalable=no / maximum-scale=1 로 막지 않습니다.
+      iOS 10 부터 Safari 가 무시하고, 먹는 브라우저에서는 저시력 사용자가
+      확대를 못 하게 됩니다. 해법은 언제나 16px 쪽입니다.
+   ══════════════════════════════════════════════════════════════════════════ */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea,
+  [contenteditable],
+  /* ↓ Tailwind 등 유틸리티 클래스(.text-sm)를 이기기 위한 특이성 확보 */
+  input[class],
+  select[class],
+  textarea[class],
+  [contenteditable][class] {
+    font-size: 16px;
   }
 }
 
@@ -229,10 +320,6 @@
     @apply card transition-all duration-150;
     cursor: pointer;
   }
-  .card-interactive:hover {
-    background: var(--raised-hi);
-    border-color: var(--line);
-  }
 
   /* ---- 세그먼티드 컨트롤 ------------------------------------------------ */
   .segmented {
@@ -248,7 +335,6 @@
     @apply px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors duration-150;
     color: var(--ink-3);
   }
-  .segmented > button:hover { color: var(--ink); }
   .segmented > button[aria-selected='true'] {
     background: var(--surface);
     color: var(--ink);
@@ -283,13 +369,29 @@
     @apply inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors duration-150;
   }
   .btn-primary { background: var(--brand); color: var(--brand-ink); }
-  .btn-primary:hover { filter: brightness(1.08); }
   .btn-ghost {
     background: var(--raised);
     color: var(--ink-2);
     border: 1px solid var(--line);
   }
-  .btn-ghost:hover { background: var(--raised-hi); color: var(--ink); }
+
+  /* ── 호버는 마우스가 있을 때만 ──────────────────────────────────────
+     터치 기기에서 :hover 는 탭한 뒤 **다른 곳을 탭할 때까지 남습니다.**
+     "눌렀는데 계속 눌린 것처럼 보인다"가 여기서 나옵니다.
+     터치 피드백은 아래 :active 가 담당합니다. */
+  @media (hover: hover) and (pointer: fine) {
+    .card-interactive:hover {
+      background: var(--raised-hi);
+      border-color: var(--line);
+    }
+    .segmented > button:hover { color: var(--ink); }
+    .btn-primary:hover { filter: brightness(1.08); }
+    .btn-ghost:hover { background: var(--raised-hi); color: var(--ink); }
+  }
+
+  /* 터치에는 호버가 없으므로 눌린 순간의 반응을 따로 줍니다 */
+  .btn:active { transform: scale(0.97); }
+  .card-interactive:active { background: var(--raised-hi); }
 
   /* ---- 스켈레톤 --------------------------------------------------------- */
   .skeleton {
@@ -303,6 +405,50 @@
 @layer utilities {
   .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
   .no-scrollbar::-webkit-scrollbar { display: none; }
+
+  /**
+   * 가로 스크롤 영역의 표준형. `overflow-x-auto no-scrollbar` 대신 이걸 쓰세요.
+   *
+   * overflow-x: auto 만 주면 스와이프가 끝에 닿는 순간 스크롤이 페이지로 넘어가
+   * 화면 전체가 좌우로 밀립니다(scroll chaining). overscroll-behavior-x: contain
+   * 이 그 전파를 이 컨테이너에서 끊습니다.
+   *
+   * overflow-y 는 건드리지 않습니다 — 스트립 카드의 '베스트' 배지처럼 위로 삐져
+   * 나오는 요소가 잘리기 때문입니다.
+   */
+  .scroll-x {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scroll-x::-webkit-scrollbar { display: none; }
+
+  /**
+   * 44px 미만 아이콘 버튼의 **탭 영역만** 넓힙니다 (Apple HIG 최소 44×44).
+   * 보이는 크기는 그대로라 레이아웃이 흔들리지 않습니다.
+   */
+  /**
+   * 화면 높이 — `min-h-screen`(100vh) 대신 이걸 씁니다.
+   * iOS Safari 의 100vh 는 URL 바가 펼쳐진 상태 기준이라 실제 보이는 영역보다 크고,
+   * 그만큼 아래가 잘립니다. vh 를 폴백으로 먼저 두고 dvh 로 덮습니다.
+   */
+  .min-h-dvh-safe {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  .tap-safe { position: relative; }
+  .tap-safe::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
 
   .fade-edge-x {
     -webkit-mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 24px), transparent 100%);
@@ -334,12 +480,26 @@
 /* ---- Leaflet 테마 연동 --------------------------------------------------- */
 .leaflet-container { background: var(--raised-hi); font-family: inherit; }
 
+/**
+ * 다크 테마 지도 — 타일을 CSS 로 반전시킵니다.
+ *
+ * OSM 표준 타일은 라이트 한 종류뿐입니다. 다크용 무료·무키 타일 서비스를 하나 더
+ * 붙이는 대신, 라이트 타일을 반전(invert)하고 색상환을 180° 돌려 원래 색을 되살립니다.
+ * (바다 파랑이 주황으로 뒤집히는 걸 hue-rotate 가 되돌립니다)
+ * 타일 요청이 한 벌로 끝나고, 앱 테마와 지도가 어긋나지 않습니다.
+ */
+:root[data-theme='night-swell'] .leaflet-tile {
+  filter: invert(1) hue-rotate(180deg) brightness(0.86) contrast(0.92) saturate(0.7);
+}
+
 .leaflet-control-zoom a {
   background: var(--surface) !important;
   color: var(--ink) !important;
   border-color: var(--line) !important;
 }
-.leaflet-control-zoom a:hover { background: var(--raised-hi) !important; }
+@media (hover: hover) and (pointer: fine) {
+  .leaflet-control-zoom a:hover { background: var(--raised-hi) !important; }
+}
 
 .leaflet-control-attribution {
   background: color-mix(in srgb, var(--surface) 85%, transparent) !important;

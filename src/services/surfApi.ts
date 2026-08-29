@@ -19,101 +19,13 @@ import { representativeWeatherCode } from '../utils/weather';
 /** Open-Meteo marine·forecast 양쪽이 지원하는 최대 일수 (384시간, 실측 확인) */
 export const FORECAST_DAYS = 16;
 
-// 대한민국 대표 7대 서핑 스팟
-export const KOREA_SURF_SPOTS: SurfSpot[] = [
-  {
-    id: 'thirty-eight-line',
-    name: '양양 38선 / 기사문',
-    englishName: 'Yangyang 38th Line Beach',
-    region: 'EAST',
-    locationName: '강원특별자치도 양양군 현북면 38선휴게소 해변',
-    latitude: 38.0069,
-    longitude: 128.7291,
-    optimalWindDeg: 270, // 서풍 (오프쇼어)
-    optimalSwellDeg: 65,  // 동북동 스웰
-    bottomType: 'SANDBAR',
-    description: '동해안 서핑의 성지. 서풍 오프쇼어가 불 때 파도 결이 아주 매끄럽고 길게 뻗어 나갑니다.',
-  },
-  {
-    id: 'jukdo',
-    name: '양양 죽도해변',
-    englishName: 'Yangyang Jukdo Beach',
-    region: 'EAST',
-    locationName: '강원특별자치도 양양군 현남면 죽도해변',
-    latitude: 37.9715,
-    longitude: 128.7618,
-    optimalWindDeg: 260,
-    optimalSwellDeg: 55,
-    bottomType: 'SANDBAR',
-    description: '완만한 모래 수심으로 주말 서퍼들에게 최고의 인기를 누리는 국민 서핑 포인트입니다.',
-    liveCamTitle: '죽도 라인업 현황',
-  },
-  {
-    id: 'jajakdo',
-    name: '고성 자작도',
-    englishName: 'Goseong Jajakdo Beach',
-    region: 'EAST',
-    locationName: '강원특별자치도 고성군 죽왕면 자작도해수욕장',
-    latitude: 38.3340,
-    longitude: 128.5375,
-    optimalWindDeg: 280,
-    optimalSwellDeg: 70,
-    bottomType: 'SANDBAR',
-    description: '에메랄드빛 맑은 수질과 강한 북동 스웰 형성 스팟. 주말 힐링 서핑에 적합합니다.',
-  },
-  {
-    id: 'heunghwan',
-    name: '포항 흥환해변',
-    englishName: 'Pohang Heunghwan',
-    region: 'EAST',
-    locationName: '경상북도 포항시 남구 동해면 흥환리',
-    latitude: 35.9980,
-    longitude: 129.5085,
-    optimalWindDeg: 210,
-    optimalSwellDeg: 45,
-    bottomType: 'SANDBAR',
-    description: '동해 남부 대표 스팟. 남서풍 오프쇼어에 칼같은 파도 라인이 세워집니다.',
-  },
-  {
-    id: 'songjeong',
-    name: '부산 송정해수욕장',
-    englishName: 'Busan Songjeong Beach',
-    region: 'SOUTH',
-    locationName: '부산광역시 해운대구 송정동',
-    latitude: 35.1786,
-    longitude: 129.1997,
-    optimalWindDeg: 340,
-    optimalSwellDeg: 150,
-    bottomType: 'SANDBAR',
-    description: '사계절 파도가 들어오는 부산의 성지. 주말 물때 만조/간조 타임 확인이 필수적입니다.',
-  },
-  {
-    id: 'jungmun',
-    name: '제주 중문색달해변',
-    englishName: 'Jeju Jungmun Beach',
-    region: 'JEJU',
-    locationName: '제주특별자치도 서귀포시 색달동',
-    latitude: 33.2447,
-    longitude: 126.4124,
-    optimalWindDeg: 20,
-    optimalSwellDeg: 190,
-    bottomType: 'REEF',
-    description: '파워풀한 딥워터 리프 스팟. 남쪽 태풍/여름 스웰이 올 때 숏보드 꿀파도가 세워집니다.',
-  },
-  {
-    id: 'mallipo',
-    name: '태안 만리포 (만리포니아)',
-    englishName: 'Taean Mallipo Beach',
-    region: 'WEST',
-    locationName: '충청남도 태안군 소원면 만리포해수욕장',
-    latitude: 36.7844,
-    longitude: 126.1420,
-    optimalWindDeg: 100,
-    optimalSwellDeg: 270,
-    bottomType: 'SANDBAR',
-    description: '서해안 최고의 스팟. 주말 대조기 만조 전후 시간대에 부드러운 스웰 라이딩이 가능합니다.',
-  }
-];
+/**
+ * 스팟 목록은 `src/data/koreaSurfSpots.ts` 로 옮겼습니다 (스팟이 41개가 되면서
+ * 이 파일의 수집 로직을 압도했습니다). 기존 import 경로를 깨지 않도록 여기서
+ * 그대로 다시 내보냅니다 — 스팟을 추가할 때는 데이터 파일만 고치면 됩니다.
+ */
+export { KOREA_SURF_SPOTS } from '../data/koreaSurfSpots';
+import { KOREA_SURF_SPOTS } from '../data/koreaSurfSpots';
 
 export async function fetchLive16DaysForecasts(spotId: string): Promise<{
   hourly: HourlyForecast[];
@@ -124,7 +36,7 @@ export async function fetchLive16DaysForecasts(spotId: string): Promise<{
   try {
     // sea_level_height_msl = 평균해수면 대비 조위(m). 물때 차트/표의 실제 데이터 소스입니다.
     // (이전에는 tideHeightCm 이 45 로 하드코딩되어 조석 차트가 직선으로 그려졌습니다)
-    const marineUrl = `https://marine-api.open-meteo.com/v1/marine?latitude=${spot.latitude}&longitude=${spot.longitude}&hourly=wave_height,wave_period,swell_wave_direction,sea_level_height_msl&forecast_days=16&timezone=Asia%2FSeoul`;
+    const marineUrl = `https://marine-api.open-meteo.com/v1/marine?latitude=${spot.latitude}&longitude=${spot.longitude}&hourly=wave_height,wave_period,swell_wave_direction,sea_level_height_msl,wind_wave_height,wind_wave_direction&forecast_days=16&timezone=Asia%2FSeoul`;
     const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${spot.latitude}&longitude=${spot.longitude}&hourly=wind_speed_10m,wind_direction_10m,weather_code,temperature_2m,precipitation_probability&forecast_days=16&timezone=Asia%2FSeoul`;
 
     const [marineRes, weatherRes] = await Promise.all([
@@ -142,6 +54,8 @@ export async function fetchLive16DaysForecasts(spotId: string): Promise<{
     const wavePeriods: number[] = marineData.hourly.wave_period;
     const swellDirs: number[] = marineData.hourly.swell_wave_direction;
     const seaLevels: number[] = marineData.hourly.sea_level_height_msl ?? [];
+    const windWaveHeights: number[] = marineData.hourly.wind_wave_height ?? [];
+    const windWaveDirs: number[] = marineData.hourly.wind_wave_direction ?? [];
     const windSpeeds: number[] = weatherData.hourly.wind_speed_10m;
     const windDirs: number[] = weatherData.hourly.wind_direction_10m;
     const weatherCodes: number[] = weatherData.hourly.weather_code ?? [];
@@ -166,11 +80,26 @@ export async function fetchLive16DaysForecasts(spotId: string): Promise<{
       const windDirDeg = Math.round(windDirs[i] ?? spot.optimalWindDeg);
 
       const windType = calculateWindType(windDirDeg, windSpeedKmh, spot.optimalWindDeg);
-      const evaluation = evaluateSurfScore(waveHeightM, periodS, windSpeedKmh, windType);
+
+      // 다중 스웰(Wind chop) 페널티 계산
+      let crossSwellPenalty = 0;
+      const wWH = windWaveHeights[i] ?? 0;
+      const wWD = windWaveDirs[i] ?? 0;
+      if (wWH >= 0.4) {
+        const diff = Math.abs((swellDirDeg - wWD + 180 + 360) % 360 - 180);
+        if (diff > 60) {
+          crossSwellPenalty = Math.round(wWH * 10); // 0.5m 이면 5점 감점
+        }
+      }
 
       // 조위: m → cm
       const tideHeightCm = Math.round((seaLevels[i] ?? 0) * 100);
       const tideState = classifyTide(seaLevels, i);
+
+      const evaluation = evaluateSurfScore(
+        waveHeightM, periodS, windSpeedKmh, windType,
+        swellDirDeg, spot.optimalSwellDeg, tideState, crossSwellPenalty
+      );
 
       const item: HourlyForecast = {
         time: hourStr,
@@ -461,7 +390,11 @@ function generateFallback16Days(spot: SurfSpot) {
     const windSpeedKmh = isMorning ? 7 + (hourOfDay % 3) : 14 + (hourOfDay % 5) * 2;
 
     const windType = calculateWindType(windDirDeg, windSpeedKmh, spot.optimalWindDeg);
-    const evaluation = evaluateSurfScore(waveHeightM, periodS, windSpeedKmh, windType);
+    const tideState = classifyTide(tideSeries, h);
+    const evaluation = evaluateSurfScore(
+      waveHeightM, periodS, windSpeedKmh, windType,
+      spot.optimalSwellDeg, spot.optimalSwellDeg, tideState, 0
+    );
 
     const hourStr = `${hourOfDay.toString().padStart(2, '0')}:00`;
     const item: HourlyForecast = {
