@@ -17,7 +17,14 @@
 import React from 'react';
 import { MapPin, Info, Video, Clock } from 'lucide-react';
 import { SurfSpot, HourlyForecast, DailyHighlight, DailyForecast } from '../types/surf';
-import { windMeta, energyAdvice, verdictOf, verdictReason, BOTTOM_META } from '../utils/scoreVisuals';
+import {
+  windMeta,
+  energyAdvice,
+  verdictOf,
+  verdictReason,
+  BOTTOM_META,
+  swellQualityMeta,
+} from '../utils/scoreVisuals';
 import { weatherMeta } from '../utils/weather';
 import { WindDial } from './WindDial';
 
@@ -67,10 +74,14 @@ export const SpotHeader: React.FC<SpotHeaderProps> = ({
     temperatureC,
     precipProbability,
     weatherCode,
+    starType,
+    swellClass,
   } = currentForecast;
 
   const wind = windMeta(windType);
   const verdict = verdictOf(surfScore);
+  // 점수만으로는 "크지만 못 타는 파도"가 전달되지 않습니다 (scoreVisuals §6)
+  const quality = swellQualityMeta(starType, swellClass, swellPeriodS);
   const weather = weatherMeta(weatherCode);
 
   return (
@@ -129,6 +140,24 @@ export const SpotHeader: React.FC<SpotHeaderProps> = ({
           </span>
           <span className="text-[10px] hidden sm:inline" style={{ color: 'var(--ink-3)' }}>
             {verdictReason(surfScore, swellEnergyKJ, windType)}
+          </span>
+        </span>
+
+        {/* 스웰 품질 — 판정 바로 옆. 이 줄에서 가장 중요한 보조 신호입니다 */}
+        <span
+          className="inline-flex items-center gap-1.5 shrink-0"
+          title={quality.hint}
+        >
+          <span className="text-sm leading-none" style={{ color: quality.colorVar }} aria-hidden>
+            {quality.glyph}
+          </span>
+          <span className="inline-flex flex-col leading-tight">
+            <span className="text-[10px]" style={{ color: 'var(--ink-mark)' }}>
+              스웰 품질
+            </span>
+            <span className="text-sm font-semibold" style={{ color: quality.colorVar }}>
+              {quality.label}
+            </span>
           </span>
         </span>
 

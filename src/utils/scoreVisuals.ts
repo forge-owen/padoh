@@ -9,7 +9,7 @@
  * [색 + 아이콘 모양 + 한글 라벨] 세 채널로 함께 나갑니다.
  */
 
-import { WindType, SkillLevel, SeasonKey, TidePreference, CrowdLevel, SurfSpot } from '../types/surf';
+import { WindType, SkillLevel, SeasonKey, TidePreference, CrowdLevel, SurfSpot, StarType } from '../types/surf';
 
 /* ── 1. 3단계 판정 — 이 앱에서 가장 중요한 한 가지 ─────────────────────── */
 
@@ -333,3 +333,61 @@ export const BOTTOM_META: Record<SurfSpot['bottomType'], GuideChip> = {
     softVar: 'var(--tide-soft)',
   },
 };
+
+/* ── 6. 스웰 품질 — Solid / Open star ────────────────────────────────────
+ *
+ * surf-forecast 의 Solid/Open star 를 옮긴 것입니다. 판정(좋음/평범/나쁨)이
+ * **얼마나 좋은가**를 말한다면, 이 축은 **그 파도가 탈 만한 물건인가**를 말합니다.
+ *
+ * 2026-08-30 실측이 정확히 이 구분이 필요한 경우였습니다 — 파고 1m 에 바람은
+ * 완벽했지만 너울 주기가 4.8초(풍파)라, 크기만 있고 탈 것은 없었습니다.
+ * 점수 하나로는 그 사정이 전달되지 않습니다.
+ * --------------------------------------------------------------------- */
+
+export interface SwellQualityMeta {
+  /** ● Solid · ○ Open · · 없음 */
+  glyph: string;
+  label: string;
+  hint: string;
+  colorVar: string;
+}
+
+export function swellQualityMeta(
+  starType: StarType,
+  swellClass: 'GROUND' | 'MIXED' | 'WIND',
+  periodS: number
+): SwellQualityMeta {
+  if (starType === 'ZERO') {
+    return {
+      glyph: '·',
+      label: '탈 파도 없음',
+      hint: '들어오는 너울이 거의 없습니다.',
+      colorVar: 'var(--ink-mark)',
+    };
+  }
+  if (starType === 'GOLD') {
+    return {
+      glyph: '●',
+      label: '그라운드 스웰',
+      hint: `주기 ${periodS}초 — 먼바다에서 정돈돼 온 너울입니다. 면이 서고 길게 이어집니다.`,
+      colorVar: 'var(--good)',
+    };
+  }
+  // WHITE = Open star. 왜 Open 인지가 중요합니다.
+  if (swellClass === 'WIND') {
+    return {
+      glyph: '○',
+      label: `풍파 ${periodS}초`,
+      hint:
+        `주기가 짧아 근해 바람이 만든 파도입니다(10초 미만). 파장이 ${Math.round(1.56 * periodS * periodS)}m 라 ` +
+        `해변 가까이 와서야 급히 서고 곧바로 부서집니다. 파고가 나와도 타기 어렵습니다.`,
+      colorVar: 'var(--fair)',
+    };
+  }
+  return {
+    glyph: '○',
+    label: swellClass === 'MIXED' ? `중간 주기 ${periodS}초` : `주기 ${periodS}초`,
+    hint: '탈 만하지만 그라운드 스웰만큼 정돈되지는 않았습니다.',
+    colorVar: 'var(--fair)',
+  };
+}

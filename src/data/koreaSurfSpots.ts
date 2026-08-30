@@ -153,6 +153,14 @@ export const KOREA_SURF_SPOTS: SurfSpot[] = [
     tidePreference: 'ANY',
     crowdLevel: 'QUIET',
     hazards: ['갯바위'],
+    /**
+     * 🔍 2026-08-30 실측: 동해 대부분에 스웰(ENE 71°, 1.0m)이 들어온 날
+     * 여기만 **완전한 장판**이었습니다. 북쪽 아야진 곶과 항 방파제가 북동~동북동
+     * 스웰을 막는 것으로 보입니다. 코사인 굴절만으로는 표현되지 않는 차폐입니다.
+     * → 동~남동으로 열린 구간만 받는 것으로 둡니다.
+     * ⚠️ 관측 1회 기준입니다. 반증이 나오면 되돌리세요 (data/fieldReports.ts).
+     */
+    swellWindow: [95, 175],
   },
   {
     id: 'oeongchi',

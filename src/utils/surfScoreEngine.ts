@@ -6,7 +6,7 @@
  * 단순 파고가 아닌 [스웰 에너지 + 주기 + K-Offshore 바람 판단 + 물때]를 수학적으로 연산합니다.
  */
 
-import { WindType, SurfRating, StarType } from '../types/surf';
+import { WindType, SurfRating, StarType, TidePreference } from '../types/surf';
 
 /**
  * 1. Swell Energy (스웰 에너지, kJ) 산출 함수
@@ -77,135 +77,270 @@ export interface ScoreEvaluation {
   starCount: number;
 }
 
-export function evaluateSurfScore(
-  waveHeightM: number,
-  periodS: number,
-  windSpeedKmh: number,
-  windType: WindType,
-  swellDeg?: number,
-  optimalSwellDeg?: number,
-  tideState?: 'HIGH' | 'LOW' | 'RISING' | 'FALLING',
-  crossSwellPenalty: number = 0
-): ScoreEvaluation {
-  let energyKJ = calculateSwellEnergy(waveHeightM, periodS);
+/* ══════════════════════════════════════════════════════════════════════════
+   설계 근거 — 물리 + 예보 서비스 관행
+   --------------------------------------------------------------------------
+   (출처: NotebookLM "The Essential Guide to Surf Forecast Sites and Tools",
+    2026-08-31 조회 · 2026-08-30 고성/속초/양양 현장 실측 — data/fieldReports.ts)
 
-  // 1. Swell Direction Penalty (스웰 방위 매칭)
+   ① 주기가 파도 질을 지배하는 이유 — 파장과 감지수심
+        L₀ = g·T²/2π ≈ 1.56·T²   (심해 파장, m)
+        해저를 느끼기 시작하는 수심 = L₀/2
+      · T=5s  → L₀ 39m,  수심 20m 부터  → 해변 코앞에서야 급히 서고 즉시 붕괴
+      · T=10s → L₀ 156m, 수심 78m 부터  → 멀리서부터 정렬되며 들어옴
+      · T=16s → L₀ 400m, 수심 200m 부터 → 극도로 정돈된 세트
+      짧은 주기는 수평 에너지가 없어 마루만 무너지는 **스필링**(거품),
+      긴 주기는 전면이 걸리며 솟구쳐 말리는 **플런징**(배럴)이 됩니다.
+
+   ② 그라운드 스웰 vs 윈드 스웰
+        T ≥ 10s → 그라운드 스웰 (먼 저기압, 분산을 거쳐 정돈됨)
+        T < 10s → 윈드 스웰/풍파 (근해 국지풍, 찹과 노이즈)
+      2026-08-30 동해는 **너울 주기 4.8초** = 명백한 풍파였습니다.
+
+   ③ 예보 서비스의 가중치 관행
+        에너지 지수 P ∝ H²·T  ......... 50~60%  (메인)
+        바람 ......................... 30%      (곱셈 멀티플라이어)
+        조석 ......................... 10~15%   (스팟별 게이트)
+      바람은 파도를 만들지 않습니다. 있는 파도의 면을 다듬거나 망칠 뿐이라
+      **가산점이 아니라 곱셈**입니다. 온쇼어 15km/h 이상이면 0.2~0.4 배.
+
+   ④ Solid star / Open star (surf-forecast 방식)
+        Solid = 주기 10초 이상 **그리고** (오프쇼어 또는 무풍 5km/h 이하)
+        Open  = 파고는 나오지만 주기가 짧거나 온쇼어 → 크기만 있고 질은 없음
+      "파고 1.5m 인데 탈 게 못 되는 날"을 한 눈에 가르는 장치입니다.
+      2026-08-30 이 정확히 이 경우였습니다.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** 심해 파장 (m). L₀ = 1.56·T² */
+export function deepWaterWavelength(periodS: number): number {
+  return 1.56 * periodS * periodS;
+}
+
+/** 해저를 느끼기 시작하는 수심 (m) = L₀/2 */
+export function feelDepth(periodS: number): number {
+  return deepWaterWavelength(periodS) / 2;
+}
+
+/** 스웰의 성격 — 주기 10초가 경계입니다 */
+export type SwellClass = 'GROUND' | 'MIXED' | 'WIND';
+export function classifySwell(periodS: number): SwellClass {
+  if (periodS >= 10) return 'GROUND';
+  if (periodS >= 8) return 'MIXED';
+  return 'WIND';
+}
+
+/** 표 위에서 선형보간 — 구간 경계에서 점수가 계단처럼 튀는 걸 막습니다 */
+function interp(table: [number, number][], x: number): number {
+  if (x <= table[0][0]) return table[0][1];
+  const last = table[table.length - 1];
+  if (x >= last[0]) return last[1];
+  for (let i = 0; i < table.length - 1; i++) {
+    const [x0, y0] = table[i];
+    const [x1, y1] = table[i + 1];
+    if (x >= x0 && x <= x1) return y0 + ((y1 - y0) * (x - x0)) / (x1 - x0);
+  }
+  return last[1];
+}
+
+/**
+ * 크기 점수 (0~100) — **너울 파고** 기준.
+ * 전체 파고(wave_height)에는 풍파가 섞여 있어 크게 나오지만 탈 수 있는 건 너울입니다.
+ * 한국 해역 분포(0.3~2m)에 맞춰 잡았습니다.
+ */
+const SIZE_TABLE: [number, number][] = [
+  [0.15, 6], [0.3, 22], [0.5, 45], [0.7, 62], [1.0, 78], [1.4, 92], [2.0, 100],
+];
+
+/**
+ * 🔑 주기 계수 (0~1) — 이 엔진에서 가장 중요한 값입니다.
+ *
+ * 위 ①②의 물리를 곡선으로 옮긴 것입니다. 10초에서 1.0 에 도달하도록 맞췄습니다
+ * (그라운드 스웰 경계). 한국은 12초 이상이 드물어 11초에서 포화시킵니다.
+ *
+ * 실측 대조(2026-08-30): 4.8초 → 0.24. 앱 70~80점이 14~17점으로 내려가
+ * 현장(장판/코앞붕괴/챠피)과 맞아떨어졌습니다.
+ */
+const PERIOD_TABLE: [number, number][] = [
+  [4, 0.10],  // 사실상 풍파. 서핑 불가
+  [5, 0.26],
+  [6, 0.48],
+  [7, 0.72],  // 한국에서 '탈 만하다'가 시작되는 지점
+  [8, 0.86],  // MIXED
+  [10, 1.0],  // 그라운드 스웰 경계
+  [11, 1.0],
+];
+
+/**
+ * 바람 계수 — 노트북의 관행 수치(오프쇼어/무풍 1.0~1.2, 온쇼어 15km/h↑ 0.2~0.4)를
+ * 그대로 따릅니다. 가산점이 아니라 곱셈입니다(위 ③).
+ */
+function windFactor(windType: WindType, windSpeedKmh: number): number {
+  // 무풍은 어떤 방향이든 면을 망치지 않습니다
+  if (windSpeedKmh <= 5) return 1.1;
+
+  switch (windType) {
+    case 'GLASSY':
+      return 1.1;
+    case 'OFFSHORE':
+      if (windSpeedKmh <= 18) return 1.0;
+      if (windSpeedKmh <= 28) return 0.88; // 너무 세면 테이크오프를 방해합니다
+      return 0.72;
+    case 'CROSS_OFFSHORE':
+      return windSpeedKmh <= 18 ? 0.85 : 0.72;
+    case 'CROSS_ONSHORE':
+      return windSpeedKmh >= 15 ? 0.45 : 0.6;
+    case 'ONSHORE':
+    default:
+      if (windSpeedKmh >= 25) return 0.2;
+      if (windSpeedKmh >= 15) return 0.3;
+      return 0.45;
+  }
+}
+
+/**
+ * 조석 계수 — 스팟이 선호하는 물때와 현재 물때를 맞춰 봅니다.
+ *
+ * 예전에는 스팟의 `tidePreference` 를 **점수에 전혀 쓰지 않고** 전역으로
+ * "간조 -5점 / 들물 +3점" 만 했습니다. 서해 만리포(만조 전후만 가능)와
+ * 동해 죽도(물때 무관)를 같은 규칙으로 다룬 셈입니다.
+ */
+function tideFactor(
+  tideState: 'HIGH' | 'LOW' | 'RISING' | 'FALLING' | undefined,
+  pref: TidePreference | undefined
+): number {
+  if (!tideState || !pref || pref === 'ANY') return 1.0;
+  const match: Record<TidePreference, ('HIGH' | 'LOW' | 'RISING' | 'FALLING')[]> = {
+    HIGH: ['HIGH', 'RISING'],
+    LOW: ['LOW', 'FALLING'],
+    MID: ['RISING', 'FALLING'],
+    ANY: ['HIGH', 'LOW', 'RISING', 'FALLING'],
+  };
+  return match[pref].includes(tideState) ? 1.08 : 0.78;
+}
+
+export interface ScoreInput {
+  /** 너울 파고(m). 없으면 전체 파고를 넘기되 정확도가 떨어집니다 */
+  swellHeightM: number;
+  /** 🔑 너울 주기(s). 전체 파주기가 아닙니다 */
+  swellPeriodS: number;
+  /** 풍파 파고(m) — 너울 대비 비율로 '지저분함'을 판정합니다 */
+  windWaveHeightM?: number;
+  windSpeedKmh: number;
+  windType: WindType;
+  /** 너울이 들어오는 방위 */
+  swellDeg?: number;
+  /** 스팟이 바라보는 방위 */
+  optimalSwellDeg?: number;
+  tideState?: 'HIGH' | 'LOW' | 'RISING' | 'FALLING';
+  /** 스팟이 선호하는 물때 (서해는 이게 사실상 입수 가능 시간을 정합니다) */
+  tidePreference?: TidePreference;
+  /** 스팟이 실제로 스웰을 받는 방위 범위 [시작, 끝] (시계방향). 밖이면 차폐됩니다 */
+  swellWindow?: [number, number];
+}
+
+export interface ScoreEvaluation {
+  score: number;
+  rating: SurfRating;
+  /**
+   * GOLD = Solid star (주기 10초+ & 오프쇼어/무풍 — 질이 보증된 파도)
+   * WHITE = Open star (크기는 있으나 주기가 짧거나 바람이 망침)
+   * ZERO = 탈 것이 없음
+   */
+  starType: StarType;
+  starCount: number;
+  /** 스웰 성격 — UI 에서 "풍파입니다" 를 말해 주기 위해 */
+  swellClass: SwellClass;
+}
+
+/**
+ * 종합 서핑 점수 (0~100). **곱셈 모델**입니다.
+ *
+ *   점수 = 크기 × 주기계수 × 방위 × 차폐 × 바람 × 지저분함 × 조석
+ *
+ * 덧셈 모델(에너지 40 + 주기 25 + 바람 35)은 한 축이 0이어도 나머지로 높은 점수가
+ * 나옵니다. 서핑은 그렇게 되지 않습니다 — 주기가 없으면 바람이 아무리 좋아도
+ * 못 탑니다. 실제 예보 서비스들도 바람·조석을 곱셈 필터로 씁니다(위 ③).
+ */
+export function evaluateSurfScore(input: ScoreInput): ScoreEvaluation {
+  const {
+    swellHeightM,
+    swellPeriodS,
+    windWaveHeightM = 0,
+    windSpeedKmh,
+    windType,
+    swellDeg,
+    optimalSwellDeg,
+    tideState,
+    tidePreference,
+    swellWindow,
+  } = input;
+
+  const swellClass = classifySwell(swellPeriodS);
+
+  if (swellHeightM < 0.15 || swellPeriodS < 2) {
+    return { score: 3, rating: 'FLAT', starType: 'ZERO', starCount: 0, swellClass };
+  }
+
+  let score = interp(SIZE_TABLE, swellHeightM) * interp(PERIOD_TABLE, swellPeriodS);
+
+  // 방위 — 해변 정면에서 벗어날수록 굴절로 에너지가 줄어듭니다
   if (swellDeg !== undefined && optimalSwellDeg !== undefined) {
-    const angleDiff = Math.abs((swellDeg - optimalSwellDeg + 180 + 360) % 360 - 180);
-    // 90도 이상 틀어지면 에너지가 급감하되, 최소 20%는 유지 (반사파 등)
-    // angleDiff가 0일 때 1, 90일 때 0이 되도록 코사인 사용
-    const refractionFactor = Math.max(0.2, Math.cos(angleDiff * (Math.PI / 180)));
-    energyKJ = Math.round(energyKJ * refractionFactor);
+    const diff = Math.abs((((swellDeg - optimalSwellDeg) % 360) + 540) % 360 - 180);
+    score *= Math.max(0.25, Math.cos((diff * Math.PI) / 180));
   }
 
-  // 파도가 거의 없는 경우 (Flat)
-  //
-  // [2026-07-25 재보정] 이전 게이트는 `waveHeightM < 0.25 || energyKJ < 15` 였습니다.
-  // 0.6m / 7초(= 12.3kJ)는 한국에서 롱보드로 충분히 타는 가장 흔한 컨디션인데 이 게이트에
-  // 걸려 FLAT 처리됐고, 그 결과 동해안 여름은 14일 예보가 전부 10점/플랫로 나와
-  // "어느 날 갈까"를 전혀 판단할 수 없었습니다. 아래 구간은 한국 해역의 실제 분포
-  // (대략 5~200kJ)에 맞춰 다시 잡은 값입니다. 하와이/인도네시아 기준이 아닙니다.
-  if (waveHeightM < 0.2 || energyKJ < 4) {
-    return {
-      score: 6,
-      rating: 'FLAT',
-      starType: 'ZERO',
-      starCount: 0
-    };
+  /**
+   * 차폐(shadowing) — 곶·섬·방파제가 특정 방위의 스웰을 통째로 막습니다.
+   * Surfline 은 이걸 bathymetry 로 물리 연산합니다(LOTUS). 우리는 수심 데이터가
+   * 없으므로 현장 관측으로 확인된 스팟에만 방위 창을 둡니다(data/fieldReports.ts).
+   * ※ 짧은 주기일수록 회절로 감싸 들어오지 못해 차폐가 더 심합니다.
+   */
+  if (swellWindow && swellDeg !== undefined) {
+    const [from, to] = swellWindow;
+    const norm = (d: number) => ((d % 360) + 360) % 360;
+    if (norm(swellDeg - from) > norm(to - from)) {
+      score *= swellClass === 'GROUND' ? 0.35 : 0.15;
+    }
   }
 
-  let totalScore = 0;
+  score *= windFactor(windType, windSpeedKmh);
 
-  // A. 스웰 에너지 가산점 (최대 40점) — 한국 기준
-  //    참고: 0.6m/6s≈11kJ · 0.8m/7s≈22kJ · 1.0m/8s≈39kJ · 1.5m/9s≈99kJ · 2.0m/10s≈196kJ
-  if (energyKJ >= 150) totalScore += 40;      // 태풍 스웰급 — 숏보드 파워 충분
-  else if (energyKJ >= 80) totalScore += 34;  // 잘 들어온 그라운드 스웰
-  else if (energyKJ >= 35) totalScore += 27;  // 숏·롱보드 모두 재미있는 파도
-  else if (energyKJ >= 15) totalScore += 19;  // 롱보드 좋은 파도
-  else if (energyKJ >= 6) totalScore += 11;   // 롱보드·입문 연습
-  else totalScore += 5;                       // 무릎 아래
-
-  // B. 주기(Period) 가산점 (최대 25점)
-  // 한국은 9초 이상 그라운드 스웰이 드물어, 6~7초대를 "쓸 만한 파도"로 인정합니다.
-  if (periodS >= 9) totalScore += 25;       // 먼바다 그라운드 스웰 (최상)
-  else if (periodS >= 7) totalScore += 19;  // 중간 주기 스웰 (양호)
-  else if (periodS >= 6) totalScore += 13;  // 한국에서 가장 흔한 구간
-  else if (periodS >= 5) totalScore += 8;   // 짧은 주기 윈드 스웰
-  else totalScore += 3;
-
-  // C. 바람(Wind) 상태 감점 및 가산점 (최대 35점)
-  if (windType === 'GLASSY') {
-    totalScore += 35; // 바람 없는 매끄러운 장판 수면
-  } else if (windType === 'OFFSHORE') {
-    // 오프쇼어도 적당해야 함 (30km/h 넘으면 파도가 뒤로 밀림)
-    if (windSpeedKmh <= 15) totalScore += 35;
-    else if (windSpeedKmh <= 25) totalScore += 28;
-    else totalScore += 18;
-  } else if (windType === 'CROSS_OFFSHORE') {
-    totalScore += 22;
-  } else if (windType === 'CROSS_ONSHORE') {
-    totalScore += 10;
-  } else {
-    // ONSHORE (해풍): 풍속이 셀수록 점수 급격히 하락
-    if (windSpeedKmh > 20) totalScore -= 20;
-    else totalScore += 2;
+  /**
+   * 지저분함 — 풍파가 너울만큼 크면 수면이 헝클어져 면을 읽을 수 없습니다.
+   * (2026-08-30 사용자 표현: "챠피하고 제법 지저분한")
+   */
+  if (windWaveHeightM > 0 && swellHeightM > 0) {
+    const ratio = windWaveHeightM / swellHeightM;
+    if (ratio > 0.8) score *= 0.7;
+    else if (ratio > 0.5) score *= 0.85;
   }
 
-  // D. 다중 스웰(Cross-swell / Wind chop) 페널티 반영
-  if (crossSwellPenalty > 0) {
-    totalScore -= crossSwellPenalty;
-  }
+  score *= tideFactor(tideState, tidePreference);
 
-  // E. 조수 간만의 차 (Tide) 영향
-  // 한국은 썰물(LOW)일 때 물이 너무 빠져서 덤핑(내리꽂는 파도)이 되거나 얕아져서 타기 힘든 경우가 잦음.
-  // 반대로 RISING이나 HIGH일 때 파도가 밀고 들어오는 힘이 붙음.
-  if (tideState === 'LOW') {
-    totalScore -= 5;
-  } else if (tideState === 'RISING') {
-    totalScore += 3;
-  }
+  const finalScore = Math.max(0, Math.min(100, Math.round(score)));
 
-  // 점수 범위 0 ~ 100 제한
-  const finalScore = Math.max(0, Math.min(100, totalScore));
+  /* ── Solid / Open star (위 ④) ─────────────────────────────────────────
+     크기가 아니라 **질**의 보증입니다. 주기 10초 이상이면서 바람이 면을
+     망치지 않을 때만 Solid(GOLD). 그 외에는 점수가 높아도 Open(WHITE). */
+  const cleanWind = windSpeedKmh <= 5 || windType === 'GLASSY' || windType === 'OFFSHORE';
+  const isSolid = swellPeriodS >= 10 && cleanWind && finalScore >= 38;
 
-  // Surf-forecast 벤치마킹 Star Rating 결정
-  let starType: StarType = 'ZERO';
-  let rating: SurfRating = 'POOR';
-
-  // 온쇼어 바람(해풍)이 심하면 아무리 파도가 높아도 White Star 또는 Zero Star 처리
-  if (windType === 'ONSHORE' && windSpeedKmh > 12) {
-    starType = 'WHITE'; // 아쉬운 파도 (차피 파도)
-    rating = finalScore >= 40 ? 'POOR' : 'VERY_POOR';
-  } else if (finalScore >= 80) {
-    starType = 'GOLD'; // 황금별 (꿀파도)
-    rating = 'EPIC';
-  } else if (finalScore >= 65) {
-    starType = 'GOLD';
-    rating = 'GOOD';
-  } else if (finalScore >= 45) {
-    starType = 'GOLD';
-    rating = 'FAIR';
-  } else if (finalScore >= 30) {
-    starType = 'WHITE';
-    rating = 'POOR';
-  } else {
-    starType = 'ZERO';
-    rating = 'VERY_POOR';
-  }
-
-  const starCount = Math.max(0, Math.min(10, Math.ceil(finalScore / 10)));
+  let rating: SurfRating;
+  if (finalScore >= 80) rating = 'EPIC';
+  else if (finalScore >= 60) rating = 'GOOD';
+  else if (finalScore >= 38) rating = 'FAIR';
+  else if (finalScore >= 20) rating = 'POOR';
+  else rating = swellHeightM < 0.3 ? 'FLAT' : 'VERY_POOR';
 
   return {
     score: finalScore,
     rating,
-    starType,
-    starCount
+    starType: finalScore < 20 ? 'ZERO' : isSolid ? 'GOLD' : 'WHITE',
+    starCount: Math.max(0, Math.min(5, Math.round(finalScore / 20))),
+    swellClass,
   };
 }
 
-/**
- * 방위각(0~360도)을 16방위 문자로 변환 (예: 270도 -> "W")
- */
 export function getDirectionText(deg: number): string {
   const normalized = (deg % 360 + 360) % 360;
   const directions = [

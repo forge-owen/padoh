@@ -56,6 +56,12 @@ export interface SurfSpot {
   crowdLevel: CrowdLevel;
   /** 이 스팟 고유의 위험 요소. 권역 공통 주의사항과 별개입니다. */
   hazards: string[];
+  /**
+   * 실제로 스웰을 받는 방위 범위 [시작, 끝] (시계방향, 0~359).
+   * 곶·섬·방파제가 특정 방위를 통째로 막는 스팟에만 씁니다 — 코사인 굴절만으로는
+   * 표현되지 않습니다. 없으면 사방에서 받는 것으로 봅니다.
+   */
+  swellWindow?: [number, number];
 
   liveCamTitle?: string;
   liveCamUrl?: string;
@@ -92,8 +98,11 @@ export interface HourlyForecast {
   tidePredicted: boolean;
   surfScore: number;
   rating: SurfRating;
+  /** GOLD=Solid(주기 10초+ & 깨끗한 바람) · WHITE=Open(크기만) · ZERO=없음 */
   starType: StarType;
   starCount: number;
+  /** 스웰 성격 — GROUND(10초+) / MIXED(8~10) / WIND(8초 미만, 풍파) */
+  swellClass: 'GROUND' | 'MIXED' | 'WIND';
   isLiveApi?: boolean;
 
   /* 날씨 (Open-Meteo forecast API) */
@@ -146,6 +155,8 @@ export interface DailyForecast {
   maxPrecipProbability: number;
   starType: StarType;
   starCount: number;
+  /** 그날 대표 시각의 스웰 성격 */
+  swellClass: 'GROUND' | 'MIXED' | 'WIND';
   recommendation: string;
 
   /** 이 날짜에 조위 값이 있는가 (모델 또는 조화분해 예측) */

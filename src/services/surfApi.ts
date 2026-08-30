@@ -49,7 +49,7 @@ export async function fetchLive16DaysForecasts(spotId: string): Promise<{
     //    그 뒤는 데이터가 없다고 정직하게 표시합니다(가짜 0 을 그리지 않습니다).
     const marineUrl =
       `https://marine-api.open-meteo.com/v1/marine?latitude=${spot.latitude}&longitude=${spot.longitude}` +
-      `&hourly=wave_height,wave_period,swell_wave_direction,sea_level_height_msl,wind_wave_height,wind_wave_direction` +
+      `&hourly=wave_height,wave_period,swell_wave_height,swell_wave_period,swell_wave_direction,sea_level_height_msl,wind_wave_height,wind_wave_direction` +
       `&forecast_days=16&timezone=Asia%2FSeoul&models=best_match,ncep_gfswave025`;
     const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${spot.latitude}&longitude=${spot.longitude}&hourly=wind_speed_10m,wind_direction_10m,weather_code,temperature_2m,precipitation_probability&forecast_days=16&timezone=Asia%2FSeoul`;
 
@@ -80,6 +80,14 @@ export async function fetchLive16DaysForecasts(spotId: string): Promise<{
 
     const waveHeights = mergeModels('wave_height');
     const wavePeriods = mergeModels('wave_period');
+    /**
+     * 🔑 너울 성분을 따로 받습니다.
+     * 전체 파고/파주기에는 풍파가 섞여 있어, 실제로는 못 타는 4.8초짜리 잡파가
+     * 6.5초로 보고됩니다. 점수는 반드시 너울 기준으로 계산해야 합니다.
+     * (2026-08-31 실측 보정 — surfScoreEngine 의 PERIOD_TABLE 주석 참고)
+     */
+    const swellHeights = mergeModels('swell_wave_height');
+    const swellPeriods = mergeModels('swell_wave_period');
     const swellDirs = mergeModels('swell_wave_direction');
     /**
      * 조위 — best_match 에만 있고(gfswave 는 전부 null) 약 9일에서 끊깁니다.
@@ -110,26 +118,20 @@ export async function fetchLive16DaysForecasts(spotId: string): Promise<{
       const dateISO = times[i].split('T')[0];
 
       const waveHeightM = Number((waveHeights[i] ?? 0.6).toFixed(1));
-      const periodS = Math.round(wavePeriods[i] ?? 6);
+      // 너울 성분이 없으면 전체값으로 대체하되, 그때는 정확도가 떨어집니다
+      const swellHeightM = Number((swellHeights[i] ?? waveHeights[i] ?? 0.5).toFixed(2));
+      const swellPeriodRaw = swellPeriods[i] ?? wavePeriods[i] ?? 5;
+      const periodS = Math.round(swellPeriodRaw);
       const swellDirDeg = Math.round(swellDirs[i] ?? spot.optimalSwellDeg);
 
-      const swellEnergyKJ = calculateSwellEnergy(waveHeightM, periodS);
+      const swellEnergyKJ = calculateSwellEnergy(swellHeightM, swellPeriodRaw);
 
       const windSpeedKmh = Math.round(windSpeeds[i] ?? 10);
       const windDirDeg = Math.round(windDirs[i] ?? spot.optimalWindDeg);
 
       const windType = calculateWindType(windDirDeg, windSpeedKmh, spot.optimalWindDeg);
 
-      // 다중 스웰(Wind chop) 페널티 계산
-      let crossSwellPenalty = 0;
-      const wWH = windWaveHeights[i] ?? 0;
-      const wWD = windWaveDirs[i] ?? 0;
-      if (wWH >= 0.4) {
-        const diff = Math.abs((swellDirDeg - wWD + 180 + 360) % 360 - 180);
-        if (diff > 60) {
-          crossSwellPenalty = Math.round(wWH * 10); // 0.5m 이면 5점 감점
-        }
-      }
+      const windWaveH = windWaveHeights[i] ?? 0;
 
       // 조위: m → cm. 모델값 / 조화분해 예측값 / 없음 세 가지를 구분합니다.
       const tideAvailable = seaLevelsFilled[i] !== null && seaLevelsFilled[i] !== undefined;
@@ -138,10 +140,18 @@ export async function fetchLive16DaysForecasts(spotId: string): Promise<{
       const tideHeightCm = Math.round((seaLevels[i] ?? 0) * 100);
       const tideState = classifyTide(seaLevels, i);
 
-      const evaluation = evaluateSurfScore(
-        waveHeightM, periodS, windSpeedKmh, windType,
-        swellDirDeg, spot.optimalSwellDeg, tideState, crossSwellPenalty
-      );
+      const evaluation = evaluateSurfScore({
+        swellHeightM,
+        swellPeriodS: swellPeriodRaw,
+        windWaveHeightM: windWaveH,
+        windSpeedKmh,
+        windType,
+        swellDeg: swellDirDeg,
+        optimalSwellDeg: spot.optimalSwellDeg,
+        tideState,
+        tidePreference: spot.tidePreference,
+        swellWindow: spot.swellWindow,
+      });
 
       const item: HourlyForecast = {
         time: hourStr,
@@ -166,6 +176,7 @@ export async function fetchLive16DaysForecasts(spotId: string): Promise<{
         rating: evaluation.rating,
         starType: evaluation.starType,
         starCount: evaluation.starCount,
+        swellClass: evaluation.swellClass,
         isLiveApi: true,
         weatherCode: weatherCodes[i] ?? 3,
         temperatureC: Math.round(temps[i] ?? 20),
@@ -319,6 +330,7 @@ function summarizeDay(dateISO: string, items: HourlyForecast[]): DailyForecast {
     parts,
     starType: bestItem.starType,
     starCount: bestItem.starCount,
+    swellClass: bestItem.swellClass,
     recommendation: describeDay(maxScore),
     weatherCode: representativeWeatherCode(
       weatherPool.map((it) => it.weatherCode),
@@ -449,10 +461,17 @@ function generateFallback16Days(spot: SurfSpot) {
 
     const windType = calculateWindType(windDirDeg, windSpeedKmh, spot.optimalWindDeg);
     const tideState = classifyTide(tideSeries, h);
-    const evaluation = evaluateSurfScore(
-      waveHeightM, periodS, windSpeedKmh, windType,
-      spot.optimalSwellDeg, spot.optimalSwellDeg, tideState, 0
-    );
+    const evaluation = evaluateSurfScore({
+      swellHeightM: waveHeightM,
+      swellPeriodS: periodS,
+      windSpeedKmh,
+      windType,
+      swellDeg: spot.optimalSwellDeg,
+      optimalSwellDeg: spot.optimalSwellDeg,
+      tideState,
+      tidePreference: spot.tidePreference,
+      swellWindow: spot.swellWindow,
+    });
 
     const hourStr = `${hourOfDay.toString().padStart(2, '0')}:00`;
     const item: HourlyForecast = {
@@ -478,6 +497,7 @@ function generateFallback16Days(spot: SurfSpot) {
       rating: evaluation.rating,
       starType: evaluation.starType,
       starCount: evaluation.starCount,
+      swellClass: evaluation.swellClass,
       isLiveApi: false,
       // 폴백에는 실제 날씨가 없습니다. 흐림으로 두고 배지에 '오프라인 추정치'가 함께 뜹니다.
       weatherCode: 3,
@@ -647,7 +667,7 @@ export async function fetchNearbySeries(
   // (자세한 이유는 fetchLive16DaysForecasts 의 marineUrl 주석 참고)
   const marineUrl =
     `https://marine-api.open-meteo.com/v1/marine?latitude=${lats}&longitude=${lons}` +
-    `&hourly=wave_height,wave_period,swell_wave_direction,sea_level_height_msl` +
+    `&hourly=wave_height,wave_period,swell_wave_height,swell_wave_period,swell_wave_direction,wind_wave_height,sea_level_height_msl` +
     `&forecast_days=${NEARBY_DAYS}&timezone=Asia%2FSeoul&models=best_match,ncep_gfswave025`;
   const weatherUrl =
     `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
@@ -677,6 +697,9 @@ export async function fetchNearbySeries(
     };
     const heights = merge('wave_height');
     const periods = merge('wave_period');
+    const swellHeights = merge('swell_wave_height');
+    const swellPeriods = merge('swell_wave_period');
+    const windWaves = merge('wind_wave_height');
     const swellDirs = merge('swell_wave_direction');
     const seaLevels: number[] = (m.hourly.sea_level_height_msl_marine_best_match ?? []).map(
       (v: number | null) => v ?? 0
@@ -700,15 +723,18 @@ export async function fetchNearbySeries(
       const windKmh = Math.round(windSpeeds[i] ?? 0);
       const windDeg = Math.round(windDirs[i] ?? spot.optimalWindDeg);
       const windType = calculateWindType(windDeg, windKmh, spot.optimalWindDeg);
-      const { score } = evaluateSurfScore(
-        waveH,
-        periodS,
-        windKmh,
+      const { score } = evaluateSurfScore({
+        swellHeightM: (swellHeights[i] as number) ?? waveH,
+        swellPeriodS: (swellPeriods[i] as number) ?? periodS,
+        windWaveHeightM: (windWaves[i] as number) ?? 0,
+        windSpeedKmh: windKmh,
         windType,
-        Math.round(swellDirs[i] ?? spot.optimalSwellDeg),
-        spot.optimalSwellDeg,
-        classifyTide(seaLevels, i)
-      );
+        swellDeg: Math.round(swellDirs[i] ?? spot.optimalSwellDeg),
+        optimalSwellDeg: spot.optimalSwellDeg,
+        tideState: classifyTide(seaLevels, i),
+        tidePreference: spot.tidePreference,
+        swellWindow: spot.swellWindow,
+      });
 
       hours.push({
         timestamp: dateObj.getTime(),
