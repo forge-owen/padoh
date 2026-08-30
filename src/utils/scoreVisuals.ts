@@ -41,10 +41,32 @@ const VERDICTS: Record<VerdictLevel, Verdict> = {
 /**
  * 서프 스코어 → 3단계 판정.
  * 임계값을 바꿀 일이 생기면 여기 한 곳만 고치면 앱 전체가 따라옵니다.
+ *
+ * ── 임계값 근거 (2026-08-31, Surfline 520표본 대조) ──────────────────────
+ * 곱셈 엔진으로 갈아엎은 뒤 예전 임계값(60/38)을 그대로 뒀더니, 한국 전역
+ * 1456표본에서 **좋음 0.0% · 평범 1.9% · 나쁨 98.1%** 가 나왔습니다.
+ * 이건 DEVLOG [2차] §D 가 이미 한 번 고쳤던 실패("전부 플랫이라 어느 날 갈지
+ * 판단할 수 없음")의 재발입니다.
+ *
+ * 그렇다고 이번 주(여름) 분포의 백분위로 자르면 겨울이 전부 '좋음'이 됩니다.
+ * 그래서 **연중 캘리브레이션이 된 Surfline 의 등급 경계에 맞췄습니다.**
+ * 한국 13개 스팟 × 5일 × 3시간 간격 520표본에서 등급별 평균 조건을 뽑아
+ * 같은 조건을 우리 엔진에 넣은 결과:
+ *
+ *   Surfline VERY_POOR(0) → 우리  2점
+ *   Surfline POOR(1)      → 우리  9점
+ *   Surfline POOR_TO_FAIR → 우리 20점   ← 여기부터 '평범'
+ *   Surfline FAIR(3)      → 우리 24점
+ *
+ * 순위 상관은 완벽했고(단조 증가) 척도만 압축돼 있었습니다.
+ * → 평범 ≥ 18 (Surfline POOR_TO_FAIR 경계), 좋음 ≥ 45.
+ *
+ * ⚠️ 임계값을 다시 만질 때는 반드시 표본 분포를 다시 뽑아 보세요.
+ *    "좋음이 0%"거나 "나쁨이 0%"면 그 척도는 결정을 도와주지 못합니다.
  */
 export function verdictOf(score: number): Verdict {
-  if (score >= 60) return VERDICTS.GOOD;
-  if (score >= 38) return VERDICTS.FAIR;
+  if (score >= 45) return VERDICTS.GOOD;
+  if (score >= 18) return VERDICTS.FAIR;
   return VERDICTS.POOR;
 }
 
@@ -57,8 +79,8 @@ export function verdictOf(score: number): Verdict {
  */
 export function verdictReason(score: number, energyKJ: number, windType: WindType): string {
   const w = windMeta(windType);
-  if (score >= 60) return w.favorable ? '오프쇼어 + 파워' : '파도 좋음';
-  if (score >= 38) {
+  if (score >= 45) return w.favorable ? '오프쇼어 + 파워' : '파도 좋음';
+  if (score >= 18) {
     if (energyKJ < 6) return w.favorable ? '아주 작지만 깔끔' : '작지만 탈 만함';
     return w.favorable ? '작지만 깔끔' : '탈 만함';
   }

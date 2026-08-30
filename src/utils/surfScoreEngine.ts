@@ -161,14 +161,21 @@ const SIZE_TABLE: [number, number][] = [
  * 현장(장판/코앞붕괴/챠피)과 맞아떨어졌습니다.
  */
 const PERIOD_TABLE: [number, number][] = [
-  [4, 0.10],  // 사실상 풍파. 서핑 불가
-  [5, 0.26],
-  [6, 0.48],
-  [7, 0.72],  // 한국에서 '탈 만하다'가 시작되는 지점
-  [8, 0.86],  // MIXED
+  [4, 0.22],  // 풍파. 탈 수는 있으나 질은 없음
+  [5, 0.42],
+  [6, 0.62],
+  [7, 0.80],  // 한국에서 '탈 만하다'가 시작되는 지점
+  [8, 0.90],  // MIXED
   [10, 1.0],  // 그라운드 스웰 경계
   [11, 1.0],
 ];
+
+/* ⚠️ [2026-08-31 재보정] 이 표를 한 번 훨씬 가파르게(4초=0.10, 5초=0.26) 잡았다가
+   되돌렸습니다. 급경사도 계수와 곱해지면서 **같은 물리를 두 번 깎았기 때문**입니다
+   — 짧은 주기가 바로 급경사의 원인입니다. 그 결과 동해 여름이 전부 한 자리수로
+   뭉개졌고, 이건 DEVLOG [2차] §D 가 이미 한 번 고쳤던 실패("전부 플랫로 나와
+   어느 날 갈까를 판단할 수 없음")의 재발이었습니다.
+   주기는 '질'을, 급경사도는 '같은 주기에서 파고가 클 때의 클로즈아웃'을 맡습니다. */
 
 /**
  * 파형 급경사도 계수 (0~1) — "크지만 못 타는 파도"의 핵심 지표.
@@ -189,14 +196,15 @@ function steepnessFactor(swellHeightM: number, periodS: number): number {
   const L0 = deepWaterWavelength(periodS);
   if (L0 <= 0) return 0.4;
   const steepness = swellHeightM / L0;
+  /* 주기 계수와 이중 감점이 되지 않도록, 풍파의 '정상' 급경사도(0.02 안팎)에서는
+     거의 깎지 않고 **그보다 더 가파를 때**(= 같은 주기에 파고만 큰 경우)만 깎습니다. */
   return interp(
     [
-      [0.006, 1.0],  // 장주기 그라운드 스웰 — 완만하게 서서 길게 벗겨짐
-      [0.012, 1.0],
-      [0.018, 0.82],
-      [0.024, 0.62],
-      [0.030, 0.45], // 클로즈아웃 영역
-      [0.040, 0.3],
+      [0.012, 1.0],  // 장주기 그라운드 스웰
+      [0.020, 0.95], // 통상적인 풍파
+      [0.028, 0.85],
+      [0.036, 0.7],
+      [0.050, 0.5],  // 클로즈아웃 영역
     ],
     steepness
   );
@@ -207,25 +215,40 @@ function steepnessFactor(swellHeightM: number, periodS: number): number {
  * 그대로 따릅니다. 가산점이 아니라 곱셈입니다(위 ③).
  */
 function windFactor(windType: WindType, windSpeedKmh: number): number {
-  // 무풍은 어떤 방향이든 면을 망치지 않습니다
-  if (windSpeedKmh <= 5) return 1.1;
+  /**
+   * 풍속에 대한 **연속** 감쇠. 예전에는 "오프쇼어 18km/h 이하 = 전부 1.0" 같은
+   * 계단이라, Surfline 이 실제로 등급을 가르는 구간(10 vs 13km/h)에서 우리는
+   * 아무 차이도 내지 못했습니다(520표본 대조에서 드러남).
+   */
+  const calm = interp(
+    [
+      [0, 1.15],  // 무풍 — 유리 같은 수면
+      [6, 1.08],
+      [12, 1.0],
+      [18, 0.92],
+      [28, 0.8],
+      [40, 0.68],
+    ],
+    windSpeedKmh
+  );
+
+  // 5km/h 이하는 방향이 의미 없습니다
+  if (windSpeedKmh <= 5) return calm;
 
   switch (windType) {
     case 'GLASSY':
-      return 1.1;
+      return calm;
     case 'OFFSHORE':
-      if (windSpeedKmh <= 18) return 1.0;
-      if (windSpeedKmh <= 28) return 0.88; // 너무 세면 테이크오프를 방해합니다
-      return 0.72;
+      return calm;
     case 'CROSS_OFFSHORE':
-      return windSpeedKmh <= 18 ? 0.85 : 0.72;
+      return calm * 0.85;
     case 'CROSS_ONSHORE':
-      return windSpeedKmh >= 15 ? 0.45 : 0.6;
+      return calm * (windSpeedKmh >= 15 ? 0.52 : 0.68);
     case 'ONSHORE':
     default:
-      if (windSpeedKmh >= 25) return 0.2;
-      if (windSpeedKmh >= 15) return 0.3;
-      return 0.45;
+      if (windSpeedKmh >= 25) return calm * 0.24;
+      if (windSpeedKmh >= 15) return calm * 0.34;
+      return calm * 0.5;
   }
 }
 
@@ -359,19 +382,20 @@ export function evaluateSurfScore(input: ScoreInput): ScoreEvaluation {
      크기가 아니라 **질**의 보증입니다. 주기 10초 이상이면서 바람이 면을
      망치지 않을 때만 Solid(GOLD). 그 외에는 점수가 높아도 Open(WHITE). */
   const cleanWind = windSpeedKmh <= 5 || windType === 'GLASSY' || windType === 'OFFSHORE';
-  const isSolid = swellPeriodS >= 10 && cleanWind && finalScore >= 38;
+  const isSolid = swellPeriodS >= 10 && cleanWind && finalScore >= 18;
 
+  // 임계값 근거는 scoreVisuals.ts 의 verdictOf 주석(Surfline 520표본 대조) 참고
   let rating: SurfRating;
-  if (finalScore >= 80) rating = 'EPIC';
-  else if (finalScore >= 60) rating = 'GOOD';
-  else if (finalScore >= 38) rating = 'FAIR';
-  else if (finalScore >= 20) rating = 'POOR';
+  if (finalScore >= 70) rating = 'EPIC';
+  else if (finalScore >= 45) rating = 'GOOD';
+  else if (finalScore >= 18) rating = 'FAIR';
+  else if (finalScore >= 8) rating = 'POOR';
   else rating = swellHeightM < 0.3 ? 'FLAT' : 'VERY_POOR';
 
   return {
     score: finalScore,
     rating,
-    starType: finalScore < 20 ? 'ZERO' : isSolid ? 'GOLD' : 'WHITE',
+    starType: finalScore < 8 ? 'ZERO' : isSolid ? 'GOLD' : 'WHITE',
     starCount: Math.max(0, Math.min(5, Math.round(finalScore / 20))),
     swellClass,
   };
