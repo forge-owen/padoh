@@ -171,6 +171,38 @@ const PERIOD_TABLE: [number, number][] = [
 ];
 
 /**
+ * 파형 급경사도 계수 (0~1) — "크지만 못 타는 파도"의 핵심 지표.
+ *
+ *      steepness = H₀ / L₀ = H₀ / (1.56·T²)
+ *
+ * 짧은 주기에서 파고가 커지면 파형이 가팔라져, 면이 서기 전에 마루가 무너집니다
+ * (클로즈아웃/덤핑). **같은 주기라면 파고가 클수록 오히려 나빠집니다.**
+ *
+ * [2026-08-31 보정] 이 항이 없어서 봉수대(1.0m/4.85s)가 설악(0.9m/4.75s)보다
+ * 높게 나왔습니다. 현장에서 봉수대는 "해변 코앞에서 컬이 섰다 바로 부서짐,
+ * 세트가 너무 잦게 연속" — 크기가 더 큰 게 오히려 더 나빴던 경우입니다.
+ * 크기 점수만으로는 이 역전을 표현할 수 없습니다.
+ *
+ * 기준: 그라운드 스웰은 대체로 0.005 이하, 풍파는 0.02 를 넘습니다.
+ */
+function steepnessFactor(swellHeightM: number, periodS: number): number {
+  const L0 = deepWaterWavelength(periodS);
+  if (L0 <= 0) return 0.4;
+  const steepness = swellHeightM / L0;
+  return interp(
+    [
+      [0.006, 1.0],  // 장주기 그라운드 스웰 — 완만하게 서서 길게 벗겨짐
+      [0.012, 1.0],
+      [0.018, 0.82],
+      [0.024, 0.62],
+      [0.030, 0.45], // 클로즈아웃 영역
+      [0.040, 0.3],
+    ],
+    steepness
+  );
+}
+
+/**
  * 바람 계수 — 노트북의 관행 수치(오프쇼어/무풍 1.0~1.2, 온쇼어 15km/h↑ 0.2~0.4)를
  * 그대로 따릅니다. 가산점이 아니라 곱셈입니다(위 ③).
  */
@@ -281,7 +313,11 @@ export function evaluateSurfScore(input: ScoreInput): ScoreEvaluation {
     return { score: 3, rating: 'FLAT', starType: 'ZERO', starCount: 0, swellClass };
   }
 
-  let score = interp(SIZE_TABLE, swellHeightM) * interp(PERIOD_TABLE, swellPeriodS);
+  let score =
+    interp(SIZE_TABLE, swellHeightM) *
+    interp(PERIOD_TABLE, swellPeriodS) *
+    // 같은 주기라면 파고가 클수록 가팔라져 오히려 나빠집니다 (윗 주석 참고)
+    steepnessFactor(swellHeightM, swellPeriodS);
 
   // 방위 — 해변 정면에서 벗어날수록 굴절로 에너지가 줄어듭니다
   if (swellDeg !== undefined && optimalSwellDeg !== undefined) {

@@ -15,6 +15,12 @@
  * 그래서 관측을 코드에 남깁니다. 다음 사람이(또는 다음 세션이) "이 스팟 점수가 왜
  * 이렇게 나오지?" 를 물을 때 근거를 찾을 수 있어야 합니다.
  *
+ * ⚠️ 숫자를 지어내지 마세요
+ * ----------------------
+ * 서술이 관측입니다. "장판" · "코앞에서 부서짐" · "챠피함" 은 사실이고,
+ * 거기에 0점·10점·20점을 붙이는 건 **해석**입니다. 그 해석을 다시 모델 검증에
+ * 쓰면 자기가 만든 답안지로 채점하는 꼴이 됩니다. 실제로 한 번 그렇게 했습니다.
+ *
  * 기록하는 법
  * -----------
  * 다녀온 날 · 스팟 · 앱이 준 점수 · 실제로 본 것 · (알면) 로컬 평가.
@@ -33,8 +39,14 @@ export interface FieldReport {
   swell: { heightM: number; periodS: number; directionDeg: number };
   /** 현장에서 본 것. 주관적이어도 그대로 적습니다 */
   observed: string;
-  /** 로컬/본인 체감 점수 (0~100). 모르면 생략 */
-  observedScore?: number;
+  /**
+   * ⚠️ 점수를 함부로 적지 마세요.
+   *
+   * 현장에서 사람이 파도를 0~100 으로 매기는 일은 거의 없고, 매긴다 해도 척도가
+   * 우리 점수와 다릅니다. **서술(observed)이 진짜 관측이고 숫자는 대개 해석입니다.**
+   * 출처가 분명한 발화(예: "로컬이 40점이라더라")만, 누가 말했는지와 함께 적습니다.
+   */
+  observedScoreNote?: string;
 }
 
 export const FIELD_REPORTS: FieldReport[] = [
@@ -52,7 +64,6 @@ export const FIELD_REPORTS: FieldReport[] = [
     observed:
       '파도가 한 점도 없는 완전한 장판. 해수욕장이 아직 개장 중이었고 해수욕에는 최고. ' +
       '동해 대부분에 파도가 들어온 날인데 여기만 이상하리만큼 평화로움 — 차폐가 의심됨.',
-    observedScore: 0,
   },
   {
     date: '2026-08-30',
@@ -60,17 +71,16 @@ export const FIELD_REPORTS: FieldReport[] = [
     appScore: 78,
     swell: { heightM: 1.0, periodS: 4.85, directionDeg: 71 },
     observed:
-      '해변에 거의 다 와서야 컬이 일어났다가 곧바로 부서짐. 서핑이 될까 싶은 수준. ' +
-      '세트가 오면 연속 파도가 너무 잦게 붙어서 옴 (짧은 주기의 전형).',
-    observedScore: 10,
+      '해변에 거의 다 와서야 컬이 일어났다가 곧바로 부서짐. **서핑이 될까 싶은 수준.** ' +
+      '세트가 오면 연속 파도가 너무 잦게 붙어서 옴 (짧은 주기의 전형). ' +
+      '파고는 설악·물치보다 컸는데 오히려 더 나빴음 — 급경사도 항을 넣은 근거.',
   },
   {
     date: '2026-08-30',
     spotId: 'seorak',
     appScore: 72,
     swell: { heightM: 0.9, periodS: 4.75, directionDeg: 61 },
-    observed: '굉장히 챠피하고 제법 지저분한 편.',
-    observedScore: 20,
+    observed: '굉장히 챠피하고 제법 지저분한 편. (원래 이게 최대치인지는 불명)',
   },
   {
     date: '2026-08-30',
@@ -79,7 +89,9 @@ export const FIELD_REPORTS: FieldReport[] = [
     swell: { heightM: 0.9, periodS: 4.75, directionDeg: 61 },
     observed:
       '그럭저럭. 주변 가본 곳 중 가장 나았음. 역시 서핑 성지라 그런지 형태가 잡힘.',
-    observedScore: 40,
+    observedScoreNote:
+      '현장 로컬 1인이 구두로 "100점 중 40점" 이라고 함. ' +
+      '측정값이 아니고 척도도 우리와 다릅니다 — 캘리브레이션 목표로 쓰지 마세요.',
   },
 ];
 
