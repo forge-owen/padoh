@@ -22,6 +22,14 @@ import { extendTideSeries } from '../utils/tideHarmonics';
 export const FORECAST_DAYS = 16;
 
 /**
+ * ERA5 재분석 아카이브 — Open-Meteo 의 forecast API 가 과거 약 90일을 넘어가면
+ * "out of allowed range" 로 거부하는 것과 달리, 여기는 1940년부터 커버합니다.
+ * 파도(marine)에는 이런 아카이브가 없어(archive.open-meteo.com 404) 기상(바람·기온·
+ * 날씨코드·강수) 전용입니다. fetchHistoricalDay 참고.
+ */
+const WEATHER_ARCHIVE_URL = 'https://archive-api.open-meteo.com/v1/archive';
+
+/**
  * 스팟 목록은 `src/data/koreaSurfSpots.ts` 로 옮겼습니다 (스팟이 60개를 넘어가면서
  * 이 파일의 수집 로직을 압도했습니다). 기존 import 경로를 깨지 않도록 여기서
  * 그대로 다시 내보냅니다 — 스팟을 추가할 때는 데이터 파일만 고치면 됩니다.
@@ -206,6 +214,183 @@ export async function fetchLive16DaysForecasts(spotId: string): Promise<{
   }
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   과거 날짜 조회 — "9월 12일 같은 미래 날짜 정확도가 얼마나 되는지" 질문에서
+   한 걸음 더 나아가, 지난 날짜의 **실측**을 직접 조회할 수 있게 합니다.
+   --------------------------------------------------------------------------
+   16일 스트립은 예보(미래)만 다룹니다. 스트립 범위 밖 날짜를 고르면 이 경로가
+   대신 돕니다. 파도(marine)와 기상(weather) 은 과거 커버리지가 서로 달라서
+   소스를 분리해서 고릅니다.
+
+   파도  — marine API 에 `start_date`/`end_date` 를 주면(past_days 로 전체 구간을
+          끌고 올 필요 없이) 그 하루만 정확히 받습니다. 실측은 약 5년 굴러가는
+          창(rolling window)만큼 있고, 그 밖은 전부 null 입니다 — 날짜를 하드코딩한
+          컷오프로 판정하지 않고, **응답이 실제로 null 인지**로 판정합니다
+          (Open-Meteo 가 창을 넓히거나 좁혀도 코드를 안 고쳐도 됩니다).
+
+   기상  — 두 단계로 나뉩니다.
+     ① 최근 ~90일: forecast API 에 start_date/end_date (관측 블렌딩, 강수 확률 있음)
+     ② 그 이전:    archive-api(ERA5 재분석, 1940년부터). 확률 개념이 없어
+                   실측 강수량(mm)을 대신 줍니다 — precipMm 필드.
+     ①이 "허용 범위 밖"으로 거부되면 자동으로 ②로 넘어갑니다.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export interface HistoricalDayResult {
+  hourly: HourlyForecast[];
+  day: DailyForecast;
+}
+
+export type HistoricalDayResponse =
+  | { ok: true; result: HistoricalDayResult }
+  | { ok: false; reason: string };
+
+export async function fetchHistoricalDay(spotId: string, dateISO: string): Promise<HistoricalDayResponse> {
+  const spot = KOREA_SURF_SPOTS.find((s) => s.id === spotId) || KOREA_SURF_SPOTS[0];
+
+  const marineUrl =
+    `https://marine-api.open-meteo.com/v1/marine?latitude=${spot.latitude}&longitude=${spot.longitude}` +
+    `&hourly=wave_height,wave_period,swell_wave_height,swell_wave_period,swell_wave_direction,sea_level_height_msl,wind_wave_height,wind_wave_direction` +
+    `&start_date=${dateISO}&end_date=${dateISO}&timezone=Asia%2FSeoul`;
+
+  const marineRes = await fetch(marineUrl);
+  if (!marineRes.ok) return { ok: false, reason: '해양 데이터 조회에 실패했습니다.' };
+  const marineData = await marineRes.json();
+  if (marineData?.error) {
+    return { ok: false, reason: marineData.reason ?? '해양 데이터 조회에 실패했습니다.' };
+  }
+
+  const times: string[] = marineData?.hourly?.time ?? [];
+  const waveHeights: (number | null)[] = marineData?.hourly?.wave_height ?? [];
+
+  // 🔑 하드코딩된 컷오프 날짜가 아니라, 응답이 실제로 비어 있는지로 판정합니다.
+  if (times.length === 0 || waveHeights.every((v) => v === null || v === undefined)) {
+    return {
+      ok: false,
+      reason:
+        '이 날짜는 파도 데이터가 없습니다. Open-Meteo 해양 모델의 실측 범위(최근 약 5년) 밖이거나, ' +
+        '16일 예보 범위보다 너무 먼 미래입니다.',
+    };
+  }
+
+  // ── 기상: 최근 과거(forecast API) 우선 시도, 범위 밖이면 ERA5 재분석으로 ──
+  let weatherHourly: Record<string, any> | null = null;
+  let dataSource: 'HISTORICAL_FORECAST' | 'HISTORICAL_REANALYSIS' = 'HISTORICAL_FORECAST';
+
+  const forecastWeatherUrl =
+    `https://api.open-meteo.com/v1/forecast?latitude=${spot.latitude}&longitude=${spot.longitude}` +
+    `&hourly=wind_speed_10m,wind_direction_10m,weather_code,temperature_2m,precipitation_probability` +
+    `&start_date=${dateISO}&end_date=${dateISO}&timezone=Asia%2FSeoul`;
+  const fRes = await fetch(forecastWeatherUrl);
+  const fJson = fRes.ok ? await fRes.json().catch(() => null) : null;
+
+  if (fRes.ok && fJson && !fJson.error && fJson.hourly?.time?.length) {
+    weatherHourly = fJson.hourly;
+  } else {
+    dataSource = 'HISTORICAL_REANALYSIS';
+    const archiveUrl =
+      `${WEATHER_ARCHIVE_URL}?latitude=${spot.latitude}&longitude=${spot.longitude}` +
+      `&hourly=wind_speed_10m,wind_direction_10m,weather_code,temperature_2m,precipitation` +
+      `&start_date=${dateISO}&end_date=${dateISO}&timezone=Asia%2FSeoul`;
+    const aRes = await fetch(archiveUrl);
+    if (!aRes.ok) return { ok: false, reason: '기상 데이터 조회에 실패했습니다.' };
+    const aJson = await aRes.json();
+    if (aJson?.error || !aJson?.hourly?.time?.length) {
+      return { ok: false, reason: aJson?.reason ?? '기상 데이터 조회에 실패했습니다.' };
+    }
+    weatherHourly = aJson.hourly;
+  }
+
+  const wavePeriods: (number | null)[] = marineData.hourly.wave_period ?? [];
+  const swellHeights: (number | null)[] = marineData.hourly.swell_wave_height ?? [];
+  const swellPeriods: (number | null)[] = marineData.hourly.swell_wave_period ?? [];
+  const swellDirs: (number | null)[] = marineData.hourly.swell_wave_direction ?? [];
+  const seaLevelsRaw: (number | null)[] = marineData.hourly.sea_level_height_msl ?? [];
+  const seaLevels: number[] = seaLevelsRaw.map((v) => v ?? 0);
+  const windWaveHeights: (number | null)[] = marineData.hourly.wind_wave_height ?? [];
+
+  const windSpeeds: number[] = weatherHourly!.wind_speed_10m ?? [];
+  const windDirs: number[] = weatherHourly!.wind_direction_10m ?? [];
+  const weatherCodes: number[] = weatherHourly!.weather_code ?? [];
+  const temps: number[] = weatherHourly!.temperature_2m ?? [];
+  // 예보 경로면 확률(%), 재분석 경로면 실측 강수량(mm) — 서로 다른 값이라 필드를 분리합니다
+  const precipProbs: number[] | undefined = weatherHourly!.precipitation_probability;
+  const precipMmArr: number[] | undefined = weatherHourly!.precipitation;
+
+  const hourly: HourlyForecast[] = [];
+
+  for (let i = 0; i < times.length; i++) {
+    const dateObj = new Date(times[i]);
+    const hourStr = dateObj.getHours().toString().padStart(2, '0') + ':00';
+
+    const waveHeightM = Number((waveHeights[i] ?? 0).toFixed(1));
+    const swellHeightM = Number((swellHeights[i] ?? waveHeights[i] ?? 0).toFixed(2));
+    const swellPeriodRaw = swellPeriods[i] ?? wavePeriods[i] ?? 5;
+    const periodS = Math.round(swellPeriodRaw);
+    const swellDirDeg = Math.round(swellDirs[i] ?? spot.optimalSwellDeg);
+    const swellEnergyKJ = calculateSwellEnergy(swellHeightM, swellPeriodRaw);
+
+    const windSpeedKmh = Math.round(windSpeeds[i] ?? 10);
+    const windDirDeg = Math.round(windDirs[i] ?? spot.optimalWindDeg);
+    const windType = calculateWindType(windDirDeg, windSpeedKmh, spot.optimalWindDeg);
+    const windWaveH = windWaveHeights[i] ?? 0;
+
+    // 과거 날짜는 조위가 예보 지평선 문제(9일 컷오프)에 걸리지 않습니다 —
+    // start_date/end_date 로 그 하루를 직접 조회하므로 항상 실측입니다.
+    const tideAvailable = seaLevelsRaw[i] !== null && seaLevelsRaw[i] !== undefined;
+    const tideHeightCm = Math.round((seaLevels[i] ?? 0) * 100);
+    const tideState = classifyTide(seaLevels, i);
+
+    const evaluation = evaluateSurfScore({
+      swellHeightM,
+      swellPeriodS: swellPeriodRaw,
+      windWaveHeightM: windWaveH,
+      windSpeedKmh,
+      windType,
+      swellDeg: swellDirDeg,
+      optimalSwellDeg: spot.optimalSwellDeg,
+      tideState,
+      tidePreference: spot.tidePreference,
+      swellWindow: spot.swellWindow,
+    });
+
+    hourly.push({
+      time: hourStr,
+      fullDate: `${dateObj.getMonth() + 1}.${dateObj.getDate()} ${hourStr}`,
+      timestamp: dateObj.getTime(),
+      waveHeightM,
+      waveHeightFt: Number((waveHeightM * 3.28).toFixed(1)),
+      swellPeriodS: periodS,
+      swellDirectionDeg: swellDirDeg,
+      swellDirectionText: getDirectionText(swellDirDeg),
+      swellEnergyKJ,
+      windSpeedKmh,
+      windSpeedKts: Math.round(windSpeedKmh * 0.54),
+      windDirectionDeg: windDirDeg,
+      windDirectionText: getDirectionText(windDirDeg),
+      windType,
+      tideHeightCm,
+      tideState,
+      tideAvailable,
+      tidePredicted: false, // 과거 날짜는 항상 실측 — 조화분해 예측이 필요 없습니다
+      surfScore: evaluation.score,
+      rating: evaluation.rating,
+      starType: evaluation.starType,
+      starCount: evaluation.starCount,
+      swellClass: evaluation.swellClass,
+      isLiveApi: true,
+      dataSource,
+      weatherCode: weatherCodes[i] ?? 3,
+      temperatureC: Math.round(temps[i] ?? 20),
+      precipProbability: Math.round(precipProbs?.[i] ?? 0),
+      precipMm: precipMmArr ? Number((precipMmArr[i] ?? 0).toFixed(1)) : undefined,
+    });
+  }
+
+  const day = summarizeDay(dateISO, hourly);
+
+  return { ok: true, result: { hourly, day } };
+}
+
 /**
  * 조위 시계열에서 i 번째 시각의 국면(만조/간조/들물/날물)을 판정합니다.
  *
@@ -314,6 +499,8 @@ function summarizeDay(dateISO: string, items: HourlyForecast[]): DailyForecast {
   return {
     dateStr: `${dObj.getMonth() + 1}/${dObj.getDate()}`,
     fullDateISO: dateISO,
+    // 하루 안의 모든 시간이 같은 요청에서 나오므로 dataSource 는 항상 균일합니다
+    dataSource: items[0]?.dataSource,
     hasTide: items.some((it) => it.tideAvailable),
     tidePredicted: items.some((it) => it.tideAvailable) && items.every((it) => !it.tideAvailable || it.tidePredicted),
     confidence,

@@ -7,6 +7,84 @@
 ---
 
 
+# [13차] L. 과거 날짜 조회 — "날짜로 이동" 입력
+
+## L.1 무엇을 왜
+
+"날짜 입력하면 과거 날짜 데이터도 조회 가능하게 바꿔줘". 16일 스트립은 예보(미래)만
+다뤘습니다. 스트립 위에 날짜 입력을 추가해 과거 실측을 직접 볼 수 있게 했습니다.
+
+## L.2 실측 조사 — Open-Meteo 가 과거를 얼마나 주는가
+
+먼저 실측했습니다(추측 없이).
+
+```
+marine API  past_days=8000 → 실측 시작 2021-10-01 부근 (오늘 기준 약 4.93년 전)
+            → "5년" 이 고정값이 아니라 오늘 날짜 기준으로 매일 굴러가는 창입니다
+marine API  start_date/end_date 단일 날짜 쿼리 → 정확히 그 하루만 24시간 받음
+            (past_days 로 그 사이 전부를 끌고 올 필요가 없습니다)
+weather forecast API  start_date 허용 범위 = 오늘 기준 약 -93일 ~ +19일
+                       (그 밖은 400 "out of allowed range")
+archive-api.open-meteo.com  ERA5 재분석. 1940년부터, 강수는 확률이 아니라 실측(mm)
+marine 쪽 별도 아카이브    404 — 존재하지 않음. marine 은 항상 위 rolling window 뿐
+```
+
+## L.3 라우팅 — 하드코딩된 컷오프를 두지 않았습니다
+
+```
+파도(marine)  : 항상 start_date/end_date 로 그 하루만 조회.
+               응답의 wave_height 가 전부 null 이면 "데이터 없음" (컷오프 날짜를
+               상수로 박아두지 않습니다 — Open-Meteo 의 창이 매일 움직이기 때문입니다)
+
+기상(weather) : forecast API 먼저 시도(관측 블렌딩, 확률 있음) → 실패(400)하면
+               자동으로 archive-api(ERA5) 로 전환(확률 대신 실측 mm)
+```
+
+`fetchHistoricalDay(spotId, dateISO)` (신규, `surfApi.ts`) 가 이 라우팅을 전부 맡고,
+`summarizeDay` 는 그대로 재사용합니다(실시간 경로와 과거 경로가 같은 집계 규칙을 씁니다).
+
+## L.4 타입 — 출처를 숨기지 않습니다
+
+- `HourlyForecast.dataSource?: 'HISTORICAL_FORECAST' | 'HISTORICAL_REANALYSIS'`
+- `HourlyForecast.precipMm?: number` — ERA5 경로 전용. **확률과 실측은 다른 값**이라
+  같은 필드에 욱여넣지 않고 필드를 분리했습니다. HourlyForecastTable 의 강수 행이
+  이 필드 유무로 "강수 확률" ↔ "강수량 · 실측" 을 통째로 바꿔 답니다.
+- `SpotHeader` 배지가 4단으로 갈립니다: 실시간 / 과거 기록 / 과거 기록·재분석 /
+  오프라인 추정치. 지난 날짜에 "실시간" 배지를 다는 건 사실과 다르기 때문입니다.
+
+## L.5 App.tsx 배선
+
+- `inLiveRange = dailyList.some(d => d.fullDateISO === selectedDateISO)`
+- 범위 밖이면(그리고 메인 16일 fetch 가 끝난 뒤에만) `fetchHistoricalDay` 를 별도
+  이펙트로 돌립니다. 스팟을 막 바꾼 직후의 경합을 피하려고 `isLoading` 중엔 안 돕니다.
+- `dayHourly`/`selectedDay` 메모가 `usingHistorical` 이면 과거 조회 결과를,
+  아니면 기존 16일 배열을 씁니다 — **호출부(ForecastStrip/SpotHeader/표/차트)는
+  자기가 과거를 보고 있는지 전혀 모릅니다.** 데이터 소스 전환이 App 레벨에서 끝납니다.
+- 16일 스트립(`ForecastStrip`)에는 항상 `selectedDateISO` 원본 문자열을 넘깁니다.
+  `selectedDay!.fullDateISO` 를 넘기면 과거 조회가 아직 안 끝났을 때 `selectedDay`
+  가 `dailyList[0]`(오늘)로 잠깐 떨어져, 스트립이 "오늘"을 선택된 것처럼 잘못
+  하이라이트합니다.
+
+## L.6 UI — `ForecastStrip` 헤더의 "날짜로 이동"
+
+`<input type="date">` (min = 오늘-5년, max = 오늘+15 — **실제 가용성의 권위자가
+아니라 네이티브 피커 가드레일**일 뿐이고, 진짜 가용성은 fetchHistoricalDay 의
+정직한 빈 상태가 결정합니다). 범위 밖 날짜를 고르면 "16일 스트립 범위 밖 — 실측
+기록 조회 중" 라벨이 뜹니다.
+
+## L.7 검증 (헤드리스, 실제 API 호출)
+
+| 날짜 | 경로 | 결과 |
+|---|---|---|
+| 60일 전 | HISTORICAL_FORECAST | 배지 "과거 기록", 강수 **확률** 100% |
+| 1년 전 | HISTORICAL_REANALYSIS | 배지 "과거 기록 · 재분석", 강수 **실측** "0.1mm/0mm/…" |
+| 15년 전 | 없음 | "이 날짜는 파도 데이터가 없습니다" 정직한 안내 (컷오프 하드코딩 없이 응답 null 판정) |
+
+세 경로 모두 스크린샷으로 직접 확인. 가로 스크롤 없음.
+
+---
+
+
 # [12차] K. Surfline 520표본 대조 — 척도 보정
 
 ## K.1 왜 했나

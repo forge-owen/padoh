@@ -76,6 +76,7 @@ export const SpotHeader: React.FC<SpotHeaderProps> = ({
     weatherCode,
     starType,
     swellClass,
+    dataSource,
   } = currentForecast;
 
   const wind = windMeta(windType);
@@ -95,7 +96,23 @@ export const SpotHeader: React.FC<SpotHeaderProps> = ({
         <span className="badge badge-mute" title={BOTTOM_META[spot.bottomType].hint}>
           {BOTTOM_META[spot.bottomType].label}
         </span>
-        {isLiveApi ? (
+        {/*
+          네 가지 출처를 구분합니다. 과거 날짜에 "실시간" 배지를 다는 건 사실과
+          다릅니다 — 지난 일을 "실시간"이라 부르면 안 됩니다.
+            HISTORICAL_REANALYSIS — ERA5 재분석 (기상). 가장 정확한 실측
+            HISTORICAL_FORECAST   — 최근 ~90일, 예보 API 의 관측 블렌딩 구간
+            isLiveApi             — 지금~16일 예보
+            그 외                  — API 실패 시 합성 폴백
+        */}
+        {dataSource === 'HISTORICAL_REANALYSIS' ? (
+          <span className="badge badge-gold" title="ERA5 재분석 — 파도는 marine 모델 실측, 기상은 재분석 실측">
+            과거 기록 · 재분석
+          </span>
+        ) : dataSource === 'HISTORICAL_FORECAST' ? (
+          <span className="badge badge-tide" title="최근 관측 구간의 실측 기록">
+            과거 기록
+          </span>
+        ) : isLiveApi ? (
           <span className="badge badge-tide">
             <span className="live-dot" aria-hidden />
             실시간

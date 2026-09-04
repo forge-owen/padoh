@@ -28,13 +28,14 @@ import {
   fetchLive16DaysForecasts,
   fetchNearbySeries,
   NearbySpotSeries,
+  fetchHistoricalDay,
   getDailyHighlight,
   buildBriefing,
   pickBestSurfableHour,
 } from './services/surfApi';
 import { RegionKey, HourlyForecast, DailyForecast } from './types/surf';
 import { ThemeId, getStoredTheme, applyTheme, themeMeta } from './utils/theme';
-import { AlertCircle, Waves, Mail } from 'lucide-react';
+import { AlertCircle, Waves, Mail, CalendarOff } from 'lucide-react';
 
 /** 타임스탬프를 로컬 기준 YYYY-MM-DD 로. toISOString 은 UTC 라 날짜가 밀립니다. */
 function localISO(ts: number): string {
@@ -78,6 +79,19 @@ export const App: React.FC = () => {
   const [nearby, setNearby] = useState<NearbySpotSeries[]>([]);
   const [isNearbyLoading, setIsNearbyLoading] = useState(true);
 
+  /**
+   * 16일 스트립 범위 밖 날짜(과거, 또는 아주 먼 미래) 조회 결과.
+   * dailyList 와 별개로 둡니다 — 16일 스트립은 항상 "지금부터 16일"이라는
+   * 고정된 창이고, 이건 그 창 밖으로 한 번 점프한 결과만 담는 1칸짜리 캐시입니다.
+   */
+  const [historicalDay, setHistoricalDay] = useState<{
+    dateISO: string;
+    hourly: HourlyForecast[];
+    day: DailyForecast;
+  } | null>(null);
+  const [isHistoricalLoading, setIsHistoricalLoading] = useState(false);
+  const [historicalError, setHistoricalError] = useState<string | null>(null);
+
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
@@ -120,6 +134,9 @@ export const App: React.FC = () => {
     setHourlyForecasts([]);
     setDailyList([]);
     setSelectedHourly(null);
+    // 스팟이 바뀌면 이전 스팟의 과거 조회 결과가 새 스팟 이름 아래 잠깐 보이면 안 됩니다
+    setHistoricalDay(null);
+    setHistoricalError(null);
 
     fetchLive16DaysForecasts(selectedSpotId)
       .then((data) => {
@@ -170,17 +187,64 @@ export const App: React.FC = () => {
     };
   }, [selectedSpotId, refetchToken]);
 
+  /** 고른 날짜가 16일 스트립이 이미 갖고 있는 날짜인가 */
+  const inLiveRange = dailyList.some((d) => d.fullDateISO === selectedDateISO);
+
+  /**
+   * 범위 밖 날짜 조회.
+   *
+   * 메인 16일 요청이 도는 동안(`isLoading`)은 건드리지 않습니다 — 스팟을 막 바꾼
+   * 직후엔 dailyList 가 아직 이전 스팟 것이거나 비어 있어 inLiveRange 가 일시적으로
+   * 잘못된 값을 줄 수 있고, 그 틈에 옛 날짜로 조회가 나가는 걸 막기 위해서입니다.
+   */
+  useEffect(() => {
+    if (isLoading || inLiveRange || !selectedDateISO) {
+      setHistoricalError(null);
+      return;
+    }
+    let isMounted = true;
+    setIsHistoricalLoading(true);
+    setHistoricalError(null);
+
+    fetchHistoricalDay(selectedSpotId, selectedDateISO)
+      .then((res) => {
+        if (!isMounted) return;
+        if (res.ok) {
+          setHistoricalDay({ dateISO: selectedDateISO, hourly: res.result.hourly, day: res.result.day });
+          setHistoricalError(null);
+        } else {
+          setHistoricalDay(null);
+          setHistoricalError(res.reason);
+        }
+        setIsHistoricalLoading(false);
+      })
+      .catch((err) => {
+        console.error('과거 날짜 조회 에러:', err);
+        if (!isMounted) return;
+        setHistoricalDay(null);
+        setHistoricalError('과거 데이터를 불러오지 못했습니다.');
+        setIsHistoricalLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedDateISO, selectedSpotId, inLiveRange, isLoading]);
+
+  /** 지금 화면에 실을 데이터가 과거 조회 결과인가 (스트립 범위 안이면 항상 false) */
+  const usingHistorical = !inLiveRange && historicalDay?.dateISO === selectedDateISO;
+
   /* ── 선택 날짜로 스코프된 파생값들 ─────────────────────────────────── */
 
-  const dayHourly = useMemo(
-    () => hourlyForecasts.filter((fc) => localISO(fc.timestamp) === selectedDateISO),
-    [hourlyForecasts, selectedDateISO]
-  );
+  const dayHourly = useMemo(() => {
+    if (usingHistorical) return historicalDay!.hourly;
+    return hourlyForecasts.filter((fc) => localISO(fc.timestamp) === selectedDateISO);
+  }, [usingHistorical, historicalDay, hourlyForecasts, selectedDateISO]);
 
-  const selectedDay = useMemo(
-    () => dailyList.find((d) => d.fullDateISO === selectedDateISO) ?? dailyList[0],
-    [dailyList, selectedDateISO]
-  );
+  const selectedDay = useMemo(() => {
+    if (usingHistorical) return historicalDay!.day;
+    return dailyList.find((d) => d.fullDateISO === selectedDateISO) ?? dailyList[0];
+  }, [usingHistorical, historicalDay, dailyList, selectedDateISO]);
 
   /**
    * 카드에 띄울 대표 시각.
@@ -200,8 +264,14 @@ export const App: React.FC = () => {
   const highlight = useMemo(() => getDailyHighlight(dayHourly), [dayHourly]);
   const briefing = useMemo(() => buildBriefing(dailyList), [dailyList]);
 
-  /** 예보 패널을 그릴 수 있는 상태인가 — 지도는 이 값과 무관하게 항상 그립니다 */
-  const ready = !isLoading && !loadError && !!activeForecast && !!selectedDay;
+  /** 메인 16일 예보 자체가 준비됐는가 — 지도·스트립은 이 값만 봅니다 */
+  const mainReady = !isLoading && !loadError;
+  /**
+   * 선택한 "그 날짜"의 상세를 그릴 수 있는가.
+   * 스트립 범위 안이면 mainReady 와 함께 즉시 true, 범위 밖(과거 조회)이면
+   * historicalDay 가 그 날짜로 도착해야 true 입니다.
+   */
+  const dateReady = mainReady && (inLiveRange || usingHistorical) && !!activeForecast && !!selectedDay;
 
   const pickSpot = (id: string) => setSelectedSpotId(id);
 
@@ -246,24 +316,43 @@ export const App: React.FC = () => {
               다시 시도
             </button>
           </div>
-        ) : ready ? (
+        ) : mainReady ? (
           <>
+            {/* selectedDateISO 를 그대로 넘깁니다 — selectedDay!.fullDateISO 를 쓰면
+                과거 조회가 아직 도착 전일 때 selectedDay 가 잠깐 dailyList[0](오늘)로
+                떨어져, 스트립이 "오늘"을 선택된 것처럼 잘못 하이라이트합니다. */}
             <ForecastStrip
               dailyList={dailyList}
               spot={currentSpot}
               briefing={briefing}
-              selectedDateISO={selectedDay!.fullDateISO}
+              selectedDateISO={selectedDateISO}
               onSelectDate={pickDate}
             />
 
-            {/* 스트립 바로 다음에 둬서 스크롤 없이 읽히게 합니다 */}
-            <SpotHeader
-              spot={currentSpot}
-              day={selectedDay!}
-              currentForecast={activeForecast!}
-              highlight={highlight}
-              onOpenGuide={() => setIsGuideOpen(true)}
-            />
+            {/* 스트립 범위 밖 날짜(과거 조회)를 실패하면 SpotHeader 대신 이 안내를 보여줍니다.
+                "0 이나 대충 채운 값" 대신 실패를 정직하게 말합니다(TideChart 의 조위
+                범위 밖 패턴과 같은 원칙). */}
+            {historicalError ? (
+              <div className="panel p-6 text-center space-y-2">
+                <CalendarOff className="w-6 h-6 mx-auto" style={{ color: 'var(--ink-3)' }} />
+                <p className="text-sm" style={{ color: 'var(--ink-2)' }}>
+                  {historicalError}
+                </p>
+              </div>
+            ) : dateReady ? (
+              <SpotHeader
+                spot={currentSpot}
+                day={selectedDay!}
+                currentForecast={activeForecast!}
+                highlight={highlight}
+                onOpenGuide={() => setIsGuideOpen(true)}
+              />
+            ) : (
+              <PanelSkeleton
+                heights={[86]}
+                label={isHistoricalLoading ? '과거 데이터를 불러오는 중' : '예보를 불러오는 중'}
+              />
+            )}
           </>
         ) : (
           <PanelSkeleton heights={[190, 86]} label="예보를 불러오는 중" />
@@ -280,12 +369,12 @@ export const App: React.FC = () => {
           selectedSpot={currentSpot}
           onSelectSpot={pickSpot}
           mapTiles={themeMeta(theme).mapTiles}
-          dailyList={ready ? dailyList : []}
+          dailyList={mainReady ? dailyList : []}
           isLoading={isLoading}
         />
 
         {/* ── 4행: 상세. 탭 없이 세로로 이어 붙입니다 ─────────────────────── */}
-        {ready ? (
+        {loadError ? null : dateReady ? (
           <>
             <HourlyForecastTable
               forecasts={dayHourly}
@@ -297,7 +386,7 @@ export const App: React.FC = () => {
 
             <TideChart forecasts={dayHourly} day={selectedDay!} />
           </>
-        ) : loadError ? null : (
+        ) : historicalError ? null : (
           <PanelSkeleton heights={[420, 300]} />
         )}
       </main>

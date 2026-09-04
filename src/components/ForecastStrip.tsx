@@ -15,7 +15,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { DailyForecast, DayPart, SurfSpot } from '../types/surf';
-import { MapPin, Trophy, ChevronLeft, ChevronRight } from 'lucide-react';
+import { MapPin, Trophy, ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
 import { verdictOf, Verdict } from '../utils/scoreVisuals';
 import { weatherMeta } from '../utils/weather';
 import { WindDial, WindDialLegend } from './WindDial';
@@ -173,6 +173,23 @@ const DayCard: React.FC<{
   );
 };
 
+/**
+ * 날짜 입력의 min/max — 실제 데이터 가용 여부의 권위자가 아니라, 네이티브
+ * 달력 피커가 터무니없이 먼 날짜를 안 내놓게 하는 UI 가드레일입니다.
+ * 진짜 가용성은 App.tsx 의 fetchHistoricalDay 응답(있으면 보여주고 없으면
+ * "파도 데이터가 없습니다" 를 정직하게 보여주는 것)이 결정합니다.
+ */
+function dateJumpBounds() {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const toISO = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const today = new Date();
+  const max = new Date(today);
+  max.setDate(max.getDate() + 15); // 16일 스트립의 마지막 날 = 예보가 실제로 도는 한계
+  const min = new Date(today);
+  min.setFullYear(min.getFullYear() - 5); // marine 재분석의 실측 창이 대략 이만큼입니다
+  return { min: toISO(min), max: toISO(max) };
+}
+
 export const ForecastStrip: React.FC<ForecastStripProps> = ({
   dailyList,
   spot,
@@ -197,6 +214,8 @@ export const ForecastStrip: React.FC<ForecastStripProps> = ({
   const scrollBy = (dir: 1 | -1) => {
     scrollerRef.current?.scrollBy({ left: dir * 360, behavior: 'smooth' });
   };
+
+  const bounds = dateJumpBounds();
 
   return (
     <section className="panel px-4 sm:px-5 py-3.5">
@@ -239,6 +258,41 @@ export const ForecastStrip: React.FC<ForecastStripProps> = ({
             D+7~ 추세 참고용
           </span>
         </span>
+      </div>
+
+      {/* 날짜로 이동 — 16일 스트립 범위 밖(과거 실측 · 아주 먼 미래)도 이걸로 조회합니다.
+          onSelectDate 는 App.tsx 의 pickDate 그대로라, 스트립 범위 안 날짜면 재요청 없이
+          즉시 반영되고 범위 밖이면 App.tsx 가 자동으로 과거 조회를 돌립니다. */}
+      <div className="flex items-center gap-2 mb-2.5">
+        <label
+          htmlFor="date-jump-input"
+          className="inline-flex items-center gap-1.5 text-xs shrink-0"
+          style={{ color: 'var(--ink-3)' }}
+        >
+          <CalendarDays className="w-3.5 h-3.5" style={{ color: 'var(--brand)' }} aria-hidden />
+          날짜로 이동
+        </label>
+        <input
+          id="date-jump-input"
+          type="date"
+          value={selectedDateISO}
+          min={bounds.min}
+          max={bounds.max}
+          onChange={(e) => {
+            if (e.target.value) onSelectDate(e.target.value);
+          }}
+          className="text-xs rounded-lg px-2.5 py-1.5 num"
+          style={{
+            background: 'var(--raised)',
+            color: 'var(--ink)',
+            border: '1px solid var(--line)',
+          }}
+        />
+        {!dailyList.some((d) => d.fullDateISO === selectedDateISO) && (
+          <span className="text-[11px]" style={{ color: 'var(--gold)' }}>
+            16일 스트립 범위 밖 — 실측 기록 조회 중
+          </span>
+        )}
       </div>
 
       {/* 16일 슬라이드 */}

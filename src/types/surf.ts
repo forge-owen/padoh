@@ -111,6 +111,21 @@ export interface HourlyForecast {
   temperatureC: number;
   /** 강수 확률 (%) */
   precipProbability: number;
+  /**
+   * 실측 강수량(mm) — ERA5 재분석(과거 아카이브) 경로에서만 채워집니다.
+   * 재분석에는 '확률' 개념이 없고 실제로 내린 양만 있습니다. 이 값이 있으면
+   * UI 는 확률(%) 대신 이 실측값을 보여줘야 합니다 — 안 그러면 실측을
+   * 확률인 척 둔갑시키는 것이 됩니다(정성 관측을 숫자로 지어내지 말 것과 같은 문제).
+   */
+  precipMm?: number;
+  /**
+   * 이 시각 데이터의 출처.
+   *   undefined               — 지금~16일 예보(기본 실시간 경로) 또는 API 실패 시 합성 폴백
+   *   'HISTORICAL_FORECAST'   — 과거 날짜, Open-Meteo 예보 API 의 최근 관측 구간(최근 약 90일)에서 조회
+   *   'HISTORICAL_REANALYSIS' — 과거 날짜, ERA5 재분석에서 조회 (기상만; 파도는 marine 모델 그대로 실측)
+   * 값이 있으면 "실시간"이 아니라 "과거 기록"으로 표시해야 합니다.
+   */
+  dataSource?: 'HISTORICAL_FORECAST' | 'HISTORICAL_REANALYSIS';
 }
 
 /**
@@ -170,6 +185,8 @@ export interface DailyForecast {
    *   LOW    D+7~   — 방향성 참고용. 매일 뒤집힙니다
    */
   confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  /** 이 날의 데이터 출처 — HourlyForecast.dataSource 와 같은 의미 */
+  dataSource?: 'HISTORICAL_FORECAST' | 'HISTORICAL_REANALYSIS';
 }
 
 export interface DailyHighlight {

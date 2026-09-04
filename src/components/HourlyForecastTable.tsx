@@ -63,6 +63,9 @@ export const HourlyForecastTable: React.FC<HourlyForecastTableProps> = ({
   const displayed = forecasts;
   if (displayed.length === 0) return null;
 
+  // 하루 안에서는 출처가 균일하므로 한 항목만 봐도 됩니다
+  const hasPrecipMm = displayed.some((fc) => fc.precipMm !== undefined);
+
   return (
     <section className="panel py-5 animate-riseIn">
       <header className="px-5 sm:px-6 pb-4">
@@ -145,25 +148,48 @@ export const HourlyForecastTable: React.FC<HourlyForecastTableProps> = ({
             </tr>
 
             <tr>
+              {/*
+                과거 날짜(ERA5 재분석) 는 '확률' 개념이 없고 실제로 내린 양(mm)만 있습니다.
+                확률이 없는데 억지로 값을 지어내지 않고, 행 자체를 "강수량(실측)"으로
+                바꿔서 무엇을 보고 있는지 정직하게 표시합니다.
+              */}
               <RowLabel icon={<Umbrella className="w-3.5 h-3.5" style={{ color: 'var(--tide)' }} />}>
-                강수 확률
+                {hasPrecipMm ? '강수량 · 실측' : '강수 확률'}
               </RowLabel>
-              {displayed.map((fc) => (
-                <td
-                  key={fc.timestamp}
-                  className="py-1.5 px-2"
-                  style={{
-                    color: fc.precipProbability >= 50 ? 'var(--tide)' : 'var(--ink-3)',
-                    fontWeight: fc.precipProbability >= 50 ? 600 : 400,
-                    background:
-                      fc.precipProbability >= 20
-                        ? `color-mix(in srgb, var(--tide) ${Math.round(fc.precipProbability / 6)}%, transparent)`
-                        : undefined,
-                  }}
-                >
-                  {fc.precipProbability}%
-                </td>
-              ))}
+              {displayed.map((fc) =>
+                fc.precipMm !== undefined ? (
+                  <td
+                    key={fc.timestamp}
+                    className="py-1.5 px-2"
+                    style={{
+                      color: fc.precipMm >= 1 ? 'var(--tide)' : 'var(--ink-3)',
+                      fontWeight: fc.precipMm >= 1 ? 600 : 400,
+                      background:
+                        fc.precipMm > 0
+                          ? `color-mix(in srgb, var(--tide) ${Math.min(60, Math.round(fc.precipMm * 15))}%, transparent)`
+                          : undefined,
+                    }}
+                  >
+                    {fc.precipMm}
+                    <span className="text-[10px] ml-0.5">mm</span>
+                  </td>
+                ) : (
+                  <td
+                    key={fc.timestamp}
+                    className="py-1.5 px-2"
+                    style={{
+                      color: fc.precipProbability >= 50 ? 'var(--tide)' : 'var(--ink-3)',
+                      fontWeight: fc.precipProbability >= 50 ? 600 : 400,
+                      background:
+                        fc.precipProbability >= 20
+                          ? `color-mix(in srgb, var(--tide) ${Math.round(fc.precipProbability / 6)}%, transparent)`
+                          : undefined,
+                    }}
+                  >
+                    {fc.precipProbability}%
+                  </td>
+                )
+              )}
             </tr>
 
             {/* ── 파도 ─────────────────────────────────────────────── */}
